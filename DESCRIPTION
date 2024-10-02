@@ -1,12 +1,19 @@
 Package: mar4.0
-Title: What the Package Does (One Line, Title Case)
+Title: MAR 4.0
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Authors@R: c(
+    person(
+      "Matthew", "Ponzini", email = "mdponzini@ucdavis.edu", 
+      role = c("aut", "cre"),
+      comment = c(ORCID = "0009-0001-7758-8688")
+    ),
+    person(
+      "Yunyi", "Ren", role = c("aut")
+    ),
+    person("UC Davis Health, IDDRC", role = c("cph", "fnd"))
+)
+Description: R package to conduct the MAR 4.0 analyses.
+License: `use_mit_license()`
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
