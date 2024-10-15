@@ -8,6 +8,7 @@ library(readxl)
 library(dplyr)
 library(tidyr)
 library(Hmisc)
+library(data.table)
 # import data
 dataset <- readxl::read_xlsx(
   path = "inst/extdata/MAR 4.0 Weights All Data.xlsx"

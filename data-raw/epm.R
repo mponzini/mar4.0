@@ -7,6 +7,7 @@ graphics.off()
 library(readxl)
 library(dplyr)
 library(Hmisc)
+library(data.table)
 # import data
 dataset <- readxl::read_xlsx(
   path = "inst/extdata/MAR 4.0 EPM All Data.xlsx"
