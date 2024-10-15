@@ -38,13 +38,13 @@ dataset <- dataset |>
     Week = gsub("[^0-9]", "", Week) |> as.numeric()
   )
 
-labels <- c(
-  dataset$`Animal ID` = "Animal ID",
-  dataset$`Litter ID` = "Litter ID",
-  dataset$Sex = "Sex",
-  dataset$Treatment = "MAR Group",
-  dataset$Week = "Week",
-  dataset$Weights = "Weight"
+labels <- list(
+  `Animal ID` = "Animal ID",
+  `Litter ID` = "Litter ID",
+  Sex = "Sex",
+  Treatment = "MAR Group",
+  Week = "Week",
+  Weights = "Weight"
 )
 
 

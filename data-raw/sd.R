@@ -11,3 +11,12 @@ library(Hmisc)
 dataset <- readxl::read_xlsx(
   path = "inst/extdata/MAR 4.0 SD All Data.xlsx"
 )
+
+dataset <- dataset |>
+  # create total vars
+  dplyr::mutate(
+    # total social play
+    `Total Duration Play` = rowSums(
+      dplyr::select(.,tidyr::contains("Total duration Play"))
+    )
+  )
