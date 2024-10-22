@@ -15,21 +15,6 @@ dataset <- readxl::read_xlsx(
   range = "A1:BE373"
 )
 
-# reduce to variables of interest
-dataset <- dataset |>
-  dplyr::select(
-    #identifiers and characteristics
-    Cohort:Track,
-    # PND 4 variables
-
-    # PND 8 variables
-
-    # PND 12 variables
-
-    # exclusion variables
-    `PND4_Exclude?`, `PND8_Exclude?`, `PND12_Exclude?`
-  )
-
 ## pivot to long format ##
 pnd_string <- c("PND4_", "PND8_", "PND12_")
 
@@ -40,6 +25,25 @@ usv_slope <- paste0(pnd_string, "Slope (kHz/s)")
 usv_sinu <- paste0(pnd_string, "Sinuosity")
 usv_power <- paste0(pnd_string, "Mean Power (dB/Hz)")
 exclude <- paste0(pnd_string, "Exclude?")
+
+# reduce to variables of interest
+dataset <- dataset |>
+  dplyr::select(
+    #identifiers and characteristics
+    Cohort:Track,
+    # Count variables
+    dplyr::all_of(usv_count),
+    # Length variables
+    dplyr::all_of(usv_length),
+    # slope variables
+    dplyr::all_of(usv_slope),
+    # sinu variables
+    dplyr::all_of(usv_sinu),
+    # power variables
+    dplyr::all_of(usv_power),
+    # exclusion variables
+    dplyr::all_of(exclude)
+  )
 
 # pivot at once using data.table::melt()
 dataset_long <- dataset |>
