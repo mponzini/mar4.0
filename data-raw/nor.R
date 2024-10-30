@@ -21,17 +21,13 @@ dataset <- readxl::read_xlsx(
 
 ## variable of interest: Discrimination Index
 nor <- dataset |>
+  dplyr::mutate(
+    `Discirmination Index` = as.numeric(`Discirmination Index`),
+    Treat = relevel(factor(Treat),ref="Adjuvant+Saline")
+  )|>
   dplyr::select(
     Cohort, `Animal ID`, Sex, `Litter ID`, Treat, `Discirmination Index`
-  ) |>
-  dplyr::mutate(
-    discrim_index = as.numeric(`Discirmination Index`),
-    Treat = factor(
-      Treat,
-      levels = c(
-
-      )
-    )
   )
 
 ## over half of data is NA for discrimination index
+usethis::use_data(nor,overwrite = T)
