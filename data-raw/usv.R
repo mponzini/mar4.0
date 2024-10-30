@@ -9,9 +9,14 @@ library(dplyr)
 library(Hmisc)
 library(data.table)
 # import data
+mar_network <- paste0(
+  "S:/MIND/IDDRC Cores/",
+  "Core F_Biostatistics Bioinformatics and Research Design (BBRD)/",
+  "VandeWater_MARAutism/Request_97/MAR4"
+)
+
 dataset <- readxl::read_xlsx(
-  path = "inst/extdata/MAR 4.0 USV All Data.xlsx",
-  # data has summary stats in end columns, import select range
+  path = paste0(mar_network, "/Data/MAR 4.0 USV All Data.xlsx"),
   range = "A1:BE373"
 )
 
