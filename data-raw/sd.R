@@ -26,3 +26,15 @@ dataset <- dataset |>
       dplyr::select(.,tidyr::contains("Total duration Play"))
     )
   )
+
+sd <- dataset
+
+sd_juv <- sd |>
+  dplyr::filter(
+    `Testing Timepoint` == 'Juvenile'
+  )
+
+sd_adult <- sd |>
+  dplyr::filter(
+    `Testing Timepoint` == 'Adult'
+  )
