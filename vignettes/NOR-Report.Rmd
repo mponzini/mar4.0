@@ -10,10 +10,95 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  fig.width=12, fig.height=8,
+                      echo=FALSE, warning=FALSE, message=FALSE
 )
 ```
 
-```{r setup}
+```{r setup, include=FALSE}
 library(mar4.0)
+
+my_packages <- c("tidyverse", "kableExtra", "knitr", "readxl","lubridate", 
+                "arsenal","tibbletime","dplyr","ggplot2", "ggpubr", 
+                "sjPlot","car","DT")
+lapply(my_packages, library, character.only = TRUE)
 ```
+
+# Background
+
+In MAR4.0 project, investigator wants to know pre-lim analysis result on NOR with variable discrimination index. 
+
+We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+
+# Summary Statistics
+
+```{r}
+data = nor
+vars <- c("Discirmination Index")
+
+formula = as.formula("`Treat` ~ `Discirmination Index`")
+
+tab = tableby(formula,
+    data=data, numeric.stats=c("Nmiss","meansd","medianq1q3", "range"),digits=2,num.test="anova",test=F)
+
+#fdr = as.data.frame(summary(padjust(tab, method = "fdr")))$'p value'
+
+tab = as.data.frame(summary(tab))
+
+#tab$'FDR' = fdr
+
+kable(tab,format="markdown", caption = "Summary Table of Discirmination Index by Treatment")
+```
+
+# Regression Analysis
+
+The model we fit is: `Discirmination Index` =  `Treatment` + `(1 | Litter ID)`
+
+## Main effect
+
+When running the model, "boundary (singular) fit: see help('isSingular')" shows up as alert.
+
+```{r results='markup'}
+NOR_tb_anova <- data.frame(Variables = vars)
+
+# Loop through each variable
+#for (i in 1:length(vars)) {
+  # Fit the mixed effects model
+  lmer_model <- lmerTest::lmer(as.formula(paste0("`",vars[1],"`", "~ `Treat` + (1 | `Litter ID`)")), data = data) 
+  lmer_model |> summary()
+  # Extract the ANOVA Type III p-value
+  NOR_tb_anova[1, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2]
+  # NOR_tb_anova[i, "False Discovery Rate (FDR)"] = NA
+  # emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treat`,adjust = "none")
+  # 
+  # # Obtaining Contrasts
+  # for (j in 1:length(contrast_index)){
+  #   NOR_tb_anova[i,contrast_label[j]] = emm_s.t$contrasts[contrast_index[j]] %>% 
+  #     as.data.frame() %>% 
+  #     select(p.value) %>% 
+  #     as.numeric %>%
+  #     round(4)
+  # }
+#}
+# NOR_tb_anova$`False Discovery Rate (FDR)` <- round(p.adjust(NOR_tb_anova$`ANOVA III P-value`, method = "BH"),6)
+# NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
+```
+
+## Type III ANOVA 
+
+Type III ANOVA indicates that by considering treatment, there is no benefit of predicting discrimination index.
+
+```{r summary-1, results='asis'}
+NOR_tb_anova %>% 
+  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment Effect on Discrimination Index")
+```
+
+## Model Performance Check
+
+Also, see the linear model diagnostic criteria below.
+
+```{r}
+performance::check_model(lmer_model, re_formula = NA)
+```
+

@@ -21,6 +21,10 @@ dataset <- readxl::read_xlsx(
 
 ## variable of interest: Discrimination Index
 nor <- dataset |>
+  dplyr::mutate(
+    `Discirmination Index` = as.numeric(`Discirmination Index`),
+    Treat = relevel(factor(Treat),ref="Adjuvant+Saline")
+  )|>
   dplyr::select(
     Cohort, `Animal ID`, Sex, `Litter ID`, Treat, `Discirmination Index`,
     `Trial Type`, `Non Participant?`
