@@ -18,6 +18,8 @@ dataset <- readxl::read_xlsx(
   path = paste0(mar_network, "/Data/MAR4.0 NOR All Data.xlsx")
 )
 
+# exclude cross fostered rodents for analysis
+cross_fostered <- c("9_31_1", "9_31_2", "9_31_3", "9_31_4")
 
 ## variable of interest: Discrimination Index
 nor <- dataset |>
@@ -31,7 +33,8 @@ nor <- dataset |>
   ) |>
   dplyr::filter(
     stringr::str_detect(`Trial Type`, 'Test'),
-    `Non Participant?` == 'N'
+    `Non Participant?` == 'N',
+    !(`Animal ID` %in% cross_fostered)
   ) |>
   dplyr::mutate(
     `Discirmination Index` = as.numeric(`Discirmination Index`),
