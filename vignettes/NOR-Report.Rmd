@@ -1,10 +1,18 @@
 ---
-title: "NOR-Report"
-output: rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{NOR-Report}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
+title: "NOR Analysis"
+author: "Yunyi Ren, Matthew Dominic Ponzini"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    df_print: paged
+  pdf_document: default
+  word_document: default
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r, include = FALSE}
@@ -66,9 +74,22 @@ NOR_tb_anova <- data.frame(Variables = vars)
 #for (i in 1:length(vars)) {
   # Fit the mixed effects model
   lmer_model <- lmerTest::lmer(as.formula(paste0("`",vars[1],"`", "~ `Treat` + (1 | `Litter ID`)")), data = data) 
-  lmer_model |> summary()
+  lmer_summary <- lmer_model |> summary()
+  # Convert the result into a data frame for clarity
+  formatted_summary <- apply(lmer_summary$coefficients[, c(1, 2, 5)], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
+    formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
+    return(formatted_row)
+  })
+  formatted_summary_df <- as.data.frame(t(formatted_summary))
+  colnames(formatted_summary_df) <- c("Estimate (SE)", "P-Value")
+
+  
   # Extract the ANOVA Type III p-value
   NOR_tb_anova[1, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2]
+  
   # NOR_tb_anova[i, "False Discovery Rate (FDR)"] = NA
   # emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treat`,adjust = "none")
   # 
@@ -83,6 +104,8 @@ NOR_tb_anova <- data.frame(Variables = vars)
 #}
 # NOR_tb_anova$`False Discovery Rate (FDR)` <- round(p.adjust(NOR_tb_anova$`ANOVA III P-value`, method = "BH"),6)
 # NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
+  
+formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
 ```
 
 ## Type III ANOVA 
@@ -102,3 +125,54 @@ Also, see the linear model diagnostic criteria below.
 performance::check_model(lmer_model, re_formula = NA)
 ```
 
+## Gender Difference
+
+Additional, we want to test if gender will be a factor impact the result.
+
+The model we fit is: `Discirmination Index` =  `Treatment` + `Sex` + `Treatment * Sex` + `(1 | Litter ID)`
+
+It suggest that there is a different affect from the treatment across different sex.
+
+```{r results='markup',warning = FALSE}
+NOR_tb_anova <- data.frame(Variables = c(vars,"Sex","Interaction"))
+
+# Loop through each variable
+#for (i in 1:length(vars)) {
+  # Fit the mixed effects model
+  lmer_model <- lmerTest::lmer(as.formula(paste0("`",vars[1],"`", "~ `Treat` + `Sex` + `Treat` * `Sex` + (1 | `Litter ID`)")), data = data) 
+  lmer_summary <- lmer_model |> summary()
+  # Convert the result into a data frame for clarity
+  formatted_summary <- apply(lmer_summary$coefficients[, c(1, 2, 5)], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
+    formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
+    return(formatted_row)
+  })
+  formatted_summary_df <- as.data.frame(t(formatted_summary))
+  colnames(formatted_summary_df) <- c("Estimate (SE)", "P-Value")
+  # Extract the ANOVA Type III p-value
+  NOR_tb_anova[1:3, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2:4]
+  # NOR_tb_anova[i, "False Discovery Rate (FDR)"] = NA
+  # emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treat`,adjust = "none")
+  # 
+  # # Obtaining Contrasts
+  # for (j in 1:length(contrast_index)){
+  #   NOR_tb_anova[i,contrast_label[j]] = emm_s.t$contrasts[contrast_index[j]] %>% 
+  #     as.data.frame() %>% 
+  #     select(p.value) %>% 
+  #     as.numeric %>%
+  #     round(4)
+  # }
+#}
+# NOR_tb_anova$`False Discovery Rate (FDR)` <- round(p.adjust(NOR_tb_anova$`ANOVA III P-value`, method = "BH"),6)
+# NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
+  
+formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
+```
+
+
+```{r summary-2, results='asis'}
+NOR_tb_anova %>% 
+  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment Effect on Discrimination Index")
+```
