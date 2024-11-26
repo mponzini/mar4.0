@@ -35,7 +35,7 @@ lapply(my_packages, library, character.only = TRUE)
 
 # Background
 
-In MAR4.0 project, investigator wants to know pre-lim analysis result on NOR with variable discrimination index. 
+In MAR 4.0 project, investigator wants to know pre-lim analysis result on NOR with variable discrimination index. 
 
 We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
 
@@ -69,10 +69,10 @@ To explore whether gender influences the results, we fit the following model:
 
 The model we fit is: `Discirmination Index` =  `Treatment` + `Sex` + `Treatment * Sex` + `(1 | Litter ID)`
 
-The results suggest a significant interaction between Treatment and Sex, indicating that the effect of the treatment varies across sexes.
+The results suggest a Sex is significant under the interaction model, but the sex-treatment is not significant.
 
 ```{r results='markup',warning = FALSE}
-NOR_tb_anova <- data.frame(Variables = c(vars,"Sex","Interaction"))
+NOR_tb_anova <- data.frame(Variables = c("Treatment","Sex","Interaction"))
 
 # Loop through each variable
 #for (i in 1:length(vars)) {
@@ -115,7 +115,7 @@ merged_summary_df = formatted_summary_df
 
 ```{r summary-3, results='asis'}
 NOR_tb_anova %>% 
-  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment Effect on Discrimination Index")
+  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment and Sex Interaction Effect on Discrimination Index")
 ```
 
 ```{r ,include=F}
@@ -129,10 +129,10 @@ To explore whether gender influences the results, we fit the following model wit
 
 The model we fit is: `Discirmination Index` =  `Treatment` + `Sex` + `(1 | Litter ID)`
 
-The results suggest a significant interaction between Treatment and Sex, indicating that the effect of the treatment varies across sexes.
+The results suggest Sex is not significant under the sex adjustment model.
 
 ```{r results='markup',warning = FALSE}
-NOR_tb_anova <- data.frame(Variables = c(vars,"Sex"))
+NOR_tb_anova <- data.frame(Variables = c("Treatment","Sex"))
 
 # Loop through each variable
 #for (i in 1:length(vars)) {
@@ -187,8 +187,10 @@ performance::check_model(lmer_model, re_formula = NA)
 
 The model we fit is: `Discirmination Index` =  `Treatment` + `(1 | Litter ID)`
 
+The results suggest treatment is not significantly associated to discrimination index.
+
 ```{r results='markup'}
-NOR_tb_anova <- data.frame(Variables = vars)
+NOR_tb_anova <- data.frame(Variables = "Treatment")
 
 # Loop through each variable
 #for (i in 1:length(vars)) {
