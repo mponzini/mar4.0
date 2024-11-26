@@ -107,6 +107,8 @@ NOR_tb_anova <- data.frame(Variables = c(vars,"Sex","Interaction"))
 # NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
   
 formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
+
+merged_summary_df = formatted_summary_df
 ```
 
 ### Type III ANOVA 
@@ -165,6 +167,9 @@ NOR_tb_anova <- data.frame(Variables = c(vars,"Sex"))
 # NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
   
 formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
+
+merged_summary_df$`Estimate (SE) 2` = c(formatted_summary_df$`Estimate (SE)`,rep("",4))
+merged_summary_df$`P-Value 2` = c(formatted_summary_df$`P-Value` ,rep("",4))
 ```
 
 ### Type III ANOVA 
@@ -221,6 +226,9 @@ NOR_tb_anova <- data.frame(Variables = vars)
 # NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
   
 formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
+
+merged_summary_df$`Estimate (SE) 3` = c(formatted_summary_df$`Estimate (SE)`,rep("",5))
+merged_summary_df$`P-Value 3` = c(formatted_summary_df$`P-Value` ,rep("",5))
 ```
 
 ### Type III ANOVA 
@@ -237,3 +245,14 @@ NOR_tb_anova %>%
 
 performance::check_model(lmer_model, re_formula = NA)
 ```
+
+
+## Table of Estimate Comparison
+
+The overall estimation table also displayed here for all the models for an easier comparison.
+
+```{r summary-all, results='asis'}
+merged_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis for All the Models")
+```
+
+
