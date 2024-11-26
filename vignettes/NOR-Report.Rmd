@@ -61,7 +61,7 @@ kable(tab,format="markdown", caption = "Summary Table of Discirmination Index by
 
 # Regression Analysis
 
-We will start with the interaction model and reduce it step by step to the null model.
+We will start with the interaction model and reduce it step by step to the null model. The mixed effect linear regression is used on estimating the effect.
 
 ## Interaction (Full) Model
 
