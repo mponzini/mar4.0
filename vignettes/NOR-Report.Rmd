@@ -88,7 +88,7 @@ NOR_tb_anova <- data.frame(Variables = c(vars,"Sex","Interaction"))
     return(formatted_row)
   })
   formatted_summary_df <- as.data.frame(t(formatted_summary))
-  colnames(formatted_summary_df) <- c("Estimate (SE)", "P-Value")
+  colnames(formatted_summary_df) <- c("Estimate (SE) - Interaction", "P-Value")
   # Extract the ANOVA Type III p-value
   NOR_tb_anova[1:3, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2:4]
   # NOR_tb_anova[i, "False Discovery Rate (FDR)"] = NA
@@ -168,8 +168,8 @@ NOR_tb_anova <- data.frame(Variables = c(vars,"Sex"))
   
 formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
 
-merged_summary_df$`Estimate (SE) 2` = c(formatted_summary_df$`Estimate (SE)`,rep("",4))
-merged_summary_df$`P-Value 2` = c(formatted_summary_df$`P-Value` ,rep("",4))
+merged_summary_df$`Estimate (SE) Add Sex` = c(formatted_summary_df$`Estimate (SE)`,rep("",4))
+merged_summary_df$`P-Value ` = c(formatted_summary_df$`P-Value` ,rep("",4))
 ```
 
 ### Type III ANOVA 
@@ -227,8 +227,8 @@ NOR_tb_anova <- data.frame(Variables = vars)
   
 formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
 
-merged_summary_df$`Estimate (SE) 3` = c(formatted_summary_df$`Estimate (SE)`,rep("",5))
-merged_summary_df$`P-Value 3` = c(formatted_summary_df$`P-Value` ,rep("",5))
+merged_summary_df$`Estimate (SE) Basic` = c(formatted_summary_df$`Estimate (SE)`,rep("",5))
+merged_summary_df$`P-Value  ` = c(formatted_summary_df$`P-Value` ,rep("",5))
 ```
 
 ### Type III ANOVA 
