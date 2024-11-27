@@ -35,7 +35,7 @@ lapply(my_packages, library, character.only = TRUE)
 
 # Background
 
-In MAR 4.0 project, investigator wants to know pre-lim analysis result on NOR with variable discrimination index. 
+In MAR 4.0 project, investigator wants to know pre-lim analysis result on NOR with variable Discrimination Index. 
 
 We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
 
@@ -67,7 +67,7 @@ We will start with the interaction model and reduce it step by step to the null 
 
 To explore whether gender influences the results, we fit the following model:
 
-The model we fit is: `Discirmination Index` =  `Treatment` + `Sex` + `Treatment * Sex` + `(1 | Litter ID)`
+The model we fit is: `Discrimination Index` =  `Treatment` + `Sex` + `Treatment * Sex` + `(1 | Litter ID)`
 
 The results suggest a Sex is significant under the interaction model, but the sex-treatment is not significant.
 
@@ -127,7 +127,7 @@ performance::check_model(lmer_model, re_formula = NA)
 
 To explore whether gender influences the results, we fit the following model without considering interaction:
 
-The model we fit is: `Discirmination Index` =  `Treatment` + `Sex` + `(1 | Litter ID)`
+The model we fit is: `Discrimination Index` =  `Treatment` + `Sex` + `(1 | Litter ID)`
 
 The results suggest Sex is not significant under the sex adjustment model.
 
@@ -185,9 +185,9 @@ performance::check_model(lmer_model, re_formula = NA)
 
 ## Null Model
 
-The model we fit is: `Discirmination Index` =  `Treatment` + `(1 | Litter ID)`
+The model we fit is: `discrimination Index` =  `Treatment` + `(1 | Litter ID)`
 
-The results suggest treatment is not significantly associated to discrimination index.
+The results suggest treatment is not significantly associated to Discrimination Index.
 
 ```{r results='markup'}
 NOR_tb_anova <- data.frame(Variables = "Treatment")
@@ -235,11 +235,11 @@ merged_summary_df$`P-Value  ` = c(formatted_summary_df$`P-Value` ,rep("",5))
 
 ### Type III ANOVA 
 
-Type III ANOVA indicates that by considering treatment, there is no benefit of predicting discrimination index.
+Type III ANOVA indicates that by considering treatment, there is no benefit of predicting Discrimination Index.
 
 ```{r summary-1, results='asis'}
 NOR_tb_anova %>% 
-  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment Effect on Discrimination Index")
+  kable(format='markdown',align="ccc",caption = "Type III ANOVA P-value of Treatment Effect on discrimination Index")
 ```
 
 ```{r include=F}
@@ -257,4 +257,21 @@ The overall estimation table also displayed here for all the models for an easie
 merged_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis for All the Models")
 ```
 
+## Boxplot by Treatment and Sex on Discrimination Index
+
+Here we running the boxplot for discrimination index by sex and treatment to show an insignificant result.
+
+```{r}
+ggplot(data, aes(x = Treat, y = `Discirmination Index`, fill = Sex)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 16, outlier.size = 2) +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "black", position = position_dodge(width = 0.75)) +
+  labs(
+    title = "Grouped Boxplot of discrimination Index by Treat and Sex",
+    x = "Treatment",
+    y = "discrimination Index"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  scale_fill_brewer(palette = "Set2", name = "Sex")
+```
 
