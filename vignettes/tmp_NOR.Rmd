@@ -1,0 +1,171 @@
+---
+title: "Untitled"
+output: word_document
+date: "2024-10-29"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Data Processing
+
+describe how the data were cleaned 
+Convert to numeric
+
+```{r}
+nor_analytic <- nor |> dplyr::filter(!is.na(`Discirmination Index`)) |>
+  dplyr::rename(Litter = `Litter ID`)
+```
+
+
+# Summary statistics
+
+summary table of NOR discrimination by Tx group, add overall
+
+```{r}
+discrim_tx_tbl <- nor |>
+  dplyr::select(
+    Treat, `Discirmination Index`
+  ) |>
+  gtsummary::tbl_summary(
+    by = Treat,
+    type = list(
+      `Discirmination Index` ~ "continuous2"
+    ),
+    statistic = list(
+      gtsummary::all_continuous2() ~ c(
+        "{mean} ({sd})",
+        "{median} [{p25}, {p75}]",
+        "{min}, {max}"
+      )
+    )
+  ) |>
+  gtsummary::add_overall()
+
+discrim_tx_tbl
+
+
+discrim_tx_sex_tbl <- nor_analytic |>
+  dplyr::select(
+    Treat, `Discirmination Index`, Sex
+  ) |>
+  gtsummary::tbl_strata(
+    strata = Sex,
+    .tbl_fun = 
+      ~ .x |>
+      gtsummary::tbl_summary(
+        by = Treat,
+        type = list(
+          `Discirmination Index` ~ "continuous2"
+        ),
+        statistic = list(
+          gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})",
+            "{median} [{p25}, {p75}]",
+            "{min}, {max}"
+          )
+        )
+      ) |>
+      gtsummary::add_overall() |>
+      gtsummary::modify_header(
+        gtsummary::all_stat_cols() ~ "**{level}**"
+      ),
+    .combine_with = 'tbl_stack'
+  )
+
+discrim_tx_sex_tbl
+```
+
+histogram
+
+```{r}
+nor_plot_data <- dplyr::bind_rows(
+  nor_analytic, 
+  nor_analytic |> dplyr::mutate(Treat = "Overall")
+) |>
+  dplyr::mutate(
+    Treat = factor(
+      Treat,
+      levels = c(
+        "Adjuvant+Saline", "CRMP1+CRMP2",
+        "CRMP1+GDA", "LDHA+LDHB+CRMP1+STIP1",
+        "STIP1+NSE", "Overall"
+      )
+    )
+  )
+
+cowplot::plot_grid(
+  ggplot2::ggplot(
+    data = nor_analytic,
+    ggplot2::aes(x = `Discirmination Index`)
+  ) +
+  ggplot2::geom_histogram() +
+  ggplot2::theme_bw(),
+  ggplot2::ggplot(
+    data = nor_plot_data,
+    ggplot2::aes(x = `Discirmination Index`)
+  ) +
+  ggplot2::geom_histogram() +
+  ggplot2::facet_wrap(
+    .~Treat
+  ) +
+  ggplot2::theme_bw(),
+  nrow = 2
+)
+
+```
+
+# Model results
+
+
+discrimination index is bounded by [0, 1]
+
+mixed effect model with fixed effect for treatment group and random intercept for litter
+
+ANOVA type 3 p-value for Tx
+Model summary table
+
+Check model diagnostic plots
+
+```{r}
+fit <- lmerTest::lmer(
+  `Discirmination Index` ~ Treat + (1|Litter),
+  data = nor_analytic
+)
+
+car::Anova(fit, type = 3)
+
+sjPlot::tab_model(fit)
+
+performance::check_model(fit)
+```
+
+```{r}
+fit_sex_intrxn <- lmerTest::lmer(
+  `Discirmination Index` ~ Treat*Sex + (1|Litter),
+  data = nor_analytic
+)
+
+car::Anova(fit_sex_intrxn, type = 3)
+
+sjPlot::tab_model(fit_sex)
+
+performance::check_model(fit_sex)
+```
+
+```{r}
+fit_sex <- lmerTest::lmer(
+  `Discirmination Index` ~ Treat + Sex + (1|Litter),
+  data = nor_analytic
+)
+
+car::Anova(fit_sex, type = 3)
+
+sjPlot::tab_model(fit, fit_sex)
+
+performance::check_model(fit_sex)
+
+```

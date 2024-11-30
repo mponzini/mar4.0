@@ -2,18 +2,18 @@ Package: mar4.0
 Title: MAR 4.0
 Version: 0.0.0.9000
 Authors@R: c(
-    person(
-      "Matthew", "Ponzini", email = "mdponzini@ucdavis.edu", 
-      role = c("aut", "cre"),
-      comment = c(ORCID = "0009-0001-7758-8688")
-    ),
-    person(
-      "Yunyi", "Ren", role = c("aut")
-    ),
-    person("UC Davis Health, IDDRC", role = c("cph", "fnd"))
-)
+    person("Matthew", "Ponzini", email = "mdponzini@ucdavis.edu", role = c("aut", "cre"), comment = c(ORCID = "0009-0001-7758-8688")),
+    person("Yunyi", "Ren", role = c("aut")),
+    person("UC Davis Health, IDDRC", role = c("cph", "fnd")))
 Description: R package to conduct the MAR 4.0 analyses.
-License: `use_mit_license()`
+License: use_mit_license()
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Depends: 
+    R (>= 2.10)
+LazyData: true
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
