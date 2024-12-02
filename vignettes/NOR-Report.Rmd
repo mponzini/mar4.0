@@ -261,6 +261,8 @@ merged_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary
 
 Here we running the boxplot for discrimination index by sex and treatment to show an insignificant result.
 
+The data shows a higher discrimination index in female group within the placebo group and higher DI in male group in CRMP1+2 group, and this results the significance in the interaction model.
+
 ```{r}
 ggplot(data, aes(x = Treat, y = `Discirmination Index`, fill = Sex)) +
   geom_boxplot(outlier.colour = "red", outlier.shape = 16, outlier.size = 2) +
@@ -272,6 +274,7 @@ ggplot(data, aes(x = Treat, y = `Discirmination Index`, fill = Sex)) +
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  scale_fill_brewer(palette = "Set2", name = "Sex")
+  scale_fill_brewer(palette = "Set2", name = "Sex") + 
+  geom_jitter()
 ```
 
