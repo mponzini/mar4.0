@@ -180,9 +180,11 @@ We are going to run the analysis use R-package structure within github. R 4.4.1 
 
 The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a final sample size of `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Finally, the `Startle` and `Forelimb Grasp` variables were converted to binary for analysis.
 
+The interested variables at milestones data are: `r paste(vars, collapse = ", ")`.
+
 # Summary statistics
 
-The discrimination index was summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by Treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
+The all interested variables were summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by Treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
 
 ```{r summary-tbl}
 tx_tbl |>
