@@ -3,7 +3,6 @@ title: "MAR 4.0 - Novel Object Recognition"
 output: 
   bookdown::word_document2:
     number_section: false
-    reference_docx: docx_landscape.docx
 date: "2024-10-29"
 editor_options: 
   chunk_output_type: console
