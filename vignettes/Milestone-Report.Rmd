@@ -231,8 +231,6 @@ tx_sex_tbl |>
 
 The relationship between treatment groups and interested variables were assessed using linear mixed effects models or logistic regression with a random litter effect. First we fit a model with treatment groups, sex, and the interaction between them to assess for potential sex differences across the groups.\
 
-
-
 ## ANOVA Table
 
 Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models (treatment-sex interaction, sex additive, and treatment only). There was not sufficient evidence to conclude that there are sex differences between the groups to any of the variables.
