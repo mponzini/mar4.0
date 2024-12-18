@@ -1,0 +1,483 @@
+---
+title: "DRAFT -- TECHNICAL MEMORANDUM"
+subtitle: "<b>TO: </b> Kyoungmi Kim <br> <b> FROM: </b> Matt Ponzini <br> <b> SUBJECT:</b> MAR 4.0 Longitudinal Analyses <br> <b>DATE:</b> `r paste0(' ', Sys.Date())`"
+output: 
+  bookdown::html_document2:
+    number_sections: TRUE
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+```{=html}
+<style type="text/css">
+
+h1.title {
+  font-size: 24px;
+  font-weight: bolder;
+}
+
+h1 { /* Header 1 */
+  font-size: 16px;
+  font-weight: bold;
+}
+
+h2 { /* Header 2 */
+  font-size: 14px;
+  font-weight: bold;
+}
+
+h3 { /* Header 3 */
+  font-size: 13px;
+  font-weight: bold;
+}
+
+h3.subtitle { /* Header 3 Subtitle */
+  font-size: 20px;
+  font-weight: normal;
+  line-height: 150%;
+}
+
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8,
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+# load packages
+pacman::p_load(dplyr, tibble, tidyr, ggplot2, gtsummary, mar4.0, lmerTest)
+
+# update 'asis' chunk to allow inline code
+knitr::knit_engines$set(asis = function(options) {
+  if (options$echo && options$eval) knitr::knit_child(text = options$code)
+})
+  
+
+internal <- FALSE
+```
+
+<hr style="height:1px;color:black;background-color:black">
+
+```{r sysinfo, include=internal}
+# displays R version, platform, base packages, attached packages, and packages
+# loaded via a namespace
+sessionInfo()
+```
+
+# STUDY DESCRIPTION/OBJECTIVE
+
+Behavior differences between Control and MAR rodents. MAR rodents are further classified by the auto-antibody cocktail used to induce MAR.
+
+# DATA PROCESSING
+
+```{r data-import, include=internal}
+# if data import file(s) is (are) large, consider caching the data
+#   see https://bookdown.org/yihui/rmarkdown-cookbook/cache.html for more 
+#   information
+
+
+```
+
+```{r data-processing, include=internal}
+milestones2 <- milestones |>
+  dplyr::mutate(
+    PND = factor(PND, levels = c('4', '8', '12'))
+  )
+```
+
+-   Cross-fostered animals are excluded from analysis.  
+-   Data are transformed to long format.  
+-   Time (PND) is treated as continuous and categorical for comparison.
+
+# STATISTICAL ANALYSIS
+
+```{r data-analysis, include=internal}
+# if analysis is computationally intensive there are a few options.
+#   1) run analysis and save all results to load here
+#   2) run analysis here and set chunk option cache=TRUE. A cached chunk will
+#      automatically load output and objects from a previous run.
+#         see https://bookdown.org/yihui/rmarkdown-cookbook/cache.html for more 
+#         information
+
+fit1 <- lmerTest::lmer(
+  `Body Length` ~ PND*Treatment*Sex + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones
+)
+
+fit1_cat <- lmerTest::lmer(
+  `Body Length` ~ PND*Treatment*Sex + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones2
+)
+
+
+fit1_summary <- broom.mixed::tidy(fit1) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+fit1_cat_summary <- broom.mixed::tidy(fit1_cat) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+
+fit1_anova <- car::Anova(fit1, type = 3)
+
+fit1_cat_anova <- car::Anova(fit1_cat, type = 3)
+
+# fit with PND:TX interaction only
+fit2 <- lmerTest::lmer(
+  `Body Length` ~ PND + Treatment + Sex + PND*Treatment + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones
+)
+
+fit2_cat <- lmerTest::lmer(
+  `Body Length` ~ PND + Treatment + Sex + PND*Treatment + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones2
+)
+
+
+fit2_summary <- broom.mixed::tidy(fit2) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+fit2_cat_summary <- broom.mixed::tidy(fit2_cat) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+
+fit2_anova <- car::Anova(fit2, type = 3)
+
+fit2_cat_anova <- car::Anova(fit2_cat, type = 3)
+
+# fit main effects only
+fit3 <- lmerTest::lmer(
+  `Body Length` ~ PND + Treatment + Sex + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones
+)
+
+fit3_summary <- broom.mixed::tidy(fit3) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+fit3_anova <- car::Anova(fit3, type = 3)
+
+# fit without sex main effect
+fit4 <- lmerTest::lmer(
+  `Body Length` ~ PND + Treatment + PND*Treatment + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones
+)
+
+fit4_summary <- broom.mixed::tidy(fit4) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+fit4_anova <- car::Anova(fit4, type = 3)
+
+# fit with sex and time*sex
+fit5 <- lmerTest::lmer(
+  `Body Length` ~ PND + Treatment + Sex + PND*Sex + (1|`Litter ID`) + (1|`Animal ID`),
+  data = milestones
+)
+
+fit5_summary <- broom.mixed::tidy(fit5) |>
+  dplyr::select(-c(effect, group, statistic, df)) |>
+  dplyr::mutate(
+    dplyr::across(
+      .cols = c(estimate, std.error, p.value),
+      ~ format(round(.x, 3), nsmall = 3)
+    )
+  ) |>
+  tidyr::unite(col = `Estimate (SE)`, estimate, std.error, sep = " (") |>
+  dplyr::mutate(
+    `Estimate (SE)` = paste0(`Estimate (SE)`, ")"),
+    p.value = dplyr::case_when(
+      p.value == "0.000" ~ "<0.001",
+      .default = p.value
+    )
+  )
+
+fit5_anova <- car::Anova(fit5, type = 3)
+```
+
+Generalized linear mixed effects models (with a identity or logit link function) were fit with fixed effects for time (PND), sex, and treatment; and random effects for the individual and the litter. To explore the potential for sex differences in the treatment groups overtime, a three-way interaction was included.
+
+
+
+# RESULTS
+
+## Time as Continuous
+
+When modeling time as continuous, the association between treatment and body length is not statistically significant.
+
+```{r, message=FALSE, warning=FALSE}
+dplyr::bind_cols(fit1_anova, 
+                 fit2_anova |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row(), 
+                 fit3_anova |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row() |>
+                   dplyr::add_row()
+                ) |>
+  suppressMessages() |>
+  kableExtra::kbl(
+    col.names = c("Term", rep(c("Chisq", "df", "p-value"), 3))
+  ) |>
+  kableExtra::kable_styling()
+```
+
+## Time as Categorical
+
+When modeling time as a factor, there is a significant association between tail length and treatment over time.
+
+```{r}
+dplyr::bind_cols(fit1_cat_anova, 
+                 fit2_cat_anova |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row() |> 
+                   dplyr::add_row()
+                ) |>
+  suppressMessages() |>
+  kableExtra::kbl(
+    col.names = c("Term", rep(c("Chisq", "df", "p-value"), 2))
+  ) |>
+  kableExtra::kable_styling()
+```
+
+
+## Is the relationship linear over time?
+
+Explore the relationship of outcome variables over time. Do the outcome variables change linearly?
+
+```{r fig.cap="Change in Body Weight over time by Treatment Group."}
+p1 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Body Weight`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment
+    ) +
+    geom_jitter() +
+    geom_smooth(aes(group = Treatment), method = 'loess', se = FALSE) +
+    # geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.direction = 'horizontal')
+
+p_legend <- cowplot::get_legend(p1)
+p1 <- p1 + ggplot2::theme(legend.position = 'none')
+
+p2 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Body Weight`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment
+    ) +
+    geom_jitter() +
+    # geom_smooth(method = 'loess', se = FALSE) +
+    geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.position = 'none')
+
+cowplot::plot_grid(
+  cowplot::plot_grid(p1, p2, nrow = 1),
+  p_legend,
+  ncol = 1,
+  rel_heights = c(0.7, 0.1)
+)
+```
+
+<br>
+<br>
+
+```{r fig.cap="Change in Tail Length over time by Treatment Group."}
+p1 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Tail Length`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment,
+      group = `Animal ID`
+    ) +
+    geom_jitter() +
+    geom_smooth(aes(group = Treatment), method = 'loess', se = FALSE) +
+    # geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.direction = 'horizontal')
+
+p_legend <- cowplot::get_legend(p1)
+p1 <- p1 + ggplot2::theme(legend.position = 'none')
+
+p2 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Tail Length`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment
+    ) +
+    geom_jitter() +
+    # geom_smooth(method = 'loess', se = FALSE) +
+    geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.position = 'none')
+
+cowplot::plot_grid(
+  cowplot::plot_grid(p1, p2, nrow = 1),
+  p_legend,
+  ncol = 1,
+  rel_heights = c(0.7, 0.1)
+)
+
+```
+
+<br>
+<br>
+
+```{r fig.cap="Change in Body Length over time by Treatment Group."}
+p1 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Body Length`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment
+    ) +
+    geom_jitter() +
+    geom_smooth(method = 'loess', se = FALSE) +
+    # geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.direction = 'horizontal')
+
+p_legend <- cowplot::get_legend(p1)
+p1 <- p1 + ggplot2::theme(legend.position = 'none')
+
+p2 <- ggplot(data = milestones) +
+    aes(
+      x = PND,
+      y = `Body Length`,
+      color = Treatment,
+      linetype = Treatment,
+      shape = Treatment
+    ) +
+    geom_jitter() +
+    # geom_smooth(method = 'loess', se = FALSE) +
+    geom_smooth(method = 'lm', se = FALSE) +
+    theme_bw() +
+  theme(legend.position = 'none')
+
+cowplot::plot_grid(
+  cowplot::plot_grid(p1, p2, nrow = 1),
+  p_legend,
+  ncol = 1,
+  rel_heights = c(0.7, 0.1)
+)
+
+```
+
+
+## Model Diagnostics
+
+Compare model diagnostics for full models (three-way interaction between time, sex, and treatment).
+
+```{r, fig.cap="Model Diagnostics with Time as Continuous."}
+performance::check_model(
+  fit1,
+  check = c('linearity', 'normality', 'homogeneity', 'qq')
+)
+```
+
+<br>
+<br>
+
+```{r, fig.cap = "Nodel Diagnostics with Time as Factor."}
+performance::check_model(
+  fit1_cat,
+  check = c('linearity', 'normality', 'homogeneity', 'qq')
+)
+```
