@@ -238,7 +238,6 @@ tx_sex_tbl |>
 
 The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models or logistic regression, incorporating a random litter effect.
 
-<<<<<<< HEAD
 The regression fitting process followed these steps:
 
 - Fit the 3-way interaction: Begin with a model including all three-way interactions.
@@ -251,11 +250,9 @@ The regression fitting process followed these steps:
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
 
-=======
->>>>>>> fc57ec794496d32634ed7299390a85eb565b9bdf
 ## ANOVA Table
 
-Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models. There was not sufficient evidence to conclude that there are sex differences between the groups to any of the variables.
+Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models, and below is the explanation of each model:
 
 Three interaction model show the p-value on three way interaction y = time(PND) + trt + sex + time(PND) x trt + time(PND) x sex + trt x sex + *time(PND) x trt x sex*
 
