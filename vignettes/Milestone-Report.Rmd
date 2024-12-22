@@ -17,6 +17,54 @@ pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
 ```
 
 ```{r}
+###################### Functions to generate the table and models
+
+# Loop through each variable
+fit_model <- function(var, formula_str, data, model_type = "lmer") {
+  if (model_type == "glmer") {
+    return(glmer(as.formula(formula_str), data = data, family = binomial(link = "logit")))
+  } else {
+    return(lmerTest::lmer(as.formula(formula_str), data = data))
+  }
+}
+
+# Function to summarize and format model results
+format_summary <- function(model_summary, coef_indices, column_name) {
+  formatted <- apply(model_summary$coefficients[, coef_indices], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
+    paste0(estimate, " ±", se, " (p", p_value, ")")
+  })
+  formatted_summary <- as.data.frame(formatted)
+  colnames(formatted_summary) <- c(column_name)
+  return(formatted_summary)
+}
+
+# Function to combine different model estimates into one table and ordered by the summary_fullmodel (for the same variable).
+create_combined_estimate <- function(..., summary_full) {
+  summaries <- list(summary_full, ...)
+  merged_data <- summaries[[1]]
+  for (i in 2:length(summaries)) {
+    merged_data <- merge(merged_data, summaries[[i]], by = "row.names", all = TRUE)
+    rownames(merged_data) <- merged_data$Row.names
+    merged_data <- merged_data[ , !(colnames(merged_data) %in% "Row.names")]
+  }
+  ordered_data <- merged_data[order(match(rownames(merged_data), rownames(summary_full))), ]
+  ordered_data[is.na(ordered_data)] = ""
+  return(ordered_data)
+}
+
+# Function to perform ANOVA
+perform_anova <- function(model, type = "III") {
+  return(Anova(model, type = type)[, 3])
+}
+```
+
+
+
+
+```{r}
 tx_tbl <- milestones |>
   dplyr::select(
     Treatment, `Body Length`, `Tail Length`, `Belly Temp`, `Body Weight`, `Righting Reflex`, 
@@ -64,97 +112,56 @@ tx_sex_tbl <- milestones |>
 ```{r}
 data = milestones |>
   mutate(Startle = ifelse(Startle=="N",0,1),
-         `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1))
+         `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
+         PND = relevel(factor(PND), ref = "4"))
 vars = names(milestones)[11:20]
 
-milestone_anova_tb <- data.frame(Variables = c("Interaction Model - Treatment","Interaction Model - Sex","Interaction Model - Interaction",
-                                                 "Additive Model - Treatment", "Additive Model - Sex", "Basic Model - Treatment"))
+milestone_anova_tb <- data.frame(Variables = 
+                                   c("Three Interaction Model",
+                                     "Full Two Interaction - PND*Treat", "Full Two Interaction - PND*Sex",  "Full Two Interaction - Treat*Sex", 
+                                     "Two Interaction - PND*Sex", "Two Interaction - Treat*Sex",
+                                     "Two Inter - PND x Treat Only"))
 merged_summary_list <- list()
-# Loop through each variable
+
+# Main loop
 for (i in 1:length(vars)) {
-  # Fit the mixed effects model
-  if (vars[i] %in% c("Startle","Forelimb Grasp")){
-    lmer_model1 <- glmer(as.formula(paste0("`", vars[i], "`", " ~ `Treatment` + (1 | `Litter ID`)")), 
-                         data = data, family = binomial(link = "logit"))
-    lmer_summary1 <- lmer_model1 |> summary()
-    lmer_model2 <- glmer(as.formula(paste0("`",vars[i],"`", "~ `Treatment` + `Sex` + (1 | `Litter ID`)")), 
-                         data = data, family = binomial(link = "logit"))
-    lmer_summary2 <- lmer_model2 |> summary()
-    lmer_model3 <- glmer(as.formula(paste0("`",vars[i],"`", "~ `Treatment` + `Sex` + `Treatment` * `Sex` + (1 | `Litter ID`)")), 
-                         data = data, family = binomial(link = "logit"))
-    lmer_summary3 <- lmer_model3 |> summary()
-    formatted_summary3 <- apply(lmer_summary3$coefficients[, c(1, 2, 4)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-    formatted_summary2 <- apply(lmer_summary2$coefficients[, c(1, 2, 4)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-    formatted_summary1 <- apply(lmer_summary1$coefficients[, c(1, 2, 4)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-  } else{
-    lmer_model1 <- lmerTest::lmer(as.formula(paste0("`",vars[i],"`", "~ `Treatment` + (1 | `Litter ID`)")), 
-                               data = data) 
-    lmer_summary1 <- lmer_model1 |> summary()
-    lmer_model2 <- lmerTest::lmer(as.formula(paste0("`",vars[i],"`", "~ `Treatment` + `Sex` + (1 | `Litter ID`)")), 
-                                 data = data) 
-    lmer_summary2 <- lmer_model2 |> summary()
-    lmer_model3 <- lmerTest::lmer(as.formula(paste0("`",vars[i],"`", "~ `Treatment` + `Sex` + `Treatment` * `Sex` + (1 | `Litter ID`)")), 
-                                 data = data) 
-    lmer_summary3 <- lmer_model3 |> summary()
-    formatted_summary3 <- apply(lmer_summary3$coefficients[, c(1, 2, 5)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-    formatted_summary2 <- apply(lmer_summary2$coefficients[, c(1, 2, 5)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-    formatted_summary1 <- apply(lmer_summary1$coefficients[, c(1, 2, 5)], 1, function(row) {
-      estimate <- round(row[1], 3)
-      se <- round(row[2], 3)
-      p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-      formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-      return(formatted_row)
-    })
-  }
-  formatted_summary3 <- as.data.frame(t(formatted_summary3))
-  formatted_summary2 <- as.data.frame(t(formatted_summary2))
-  formatted_summary1 <- as.data.frame(t(formatted_summary1))
-  colnames(formatted_summary3) <- c(paste0("Est(SE)-Interaction"), paste0("P-Interaction"))
-  colnames(formatted_summary2) <- c(paste0("Est(SE)-Additive"), paste0("P-Additive"))
-  colnames(formatted_summary1) <- c(paste0("Est(SE)-Basic"), paste0("P-Basic"))
-  # Convert the result into a data frame for clarity
-  merged_summary_df = formatted_summary3
-  merged_summary_df$`Est(SE)-Additive` = c(formatted_summary2[,1],rep("",4))
-  merged_summary_df$`P-Additive` = c(formatted_summary2[,2] ,rep("",4))
-  merged_summary_df$`Est(SE)-Basic` = c(formatted_summary1[,1],rep("",5))
-  merged_summary_df$`P-Basic` = c(formatted_summary1[,2] ,rep("",5))
+  var <- vars[i]
+  model_type <- if (var %in% c("Startle", "Forelimb Grasp")) "glmer" else "lmer"
   
-  merged_summary_list[[i]] = merged_summary_df
-  # Extract the ANOVA Type III p-value
-  milestone_anova_tb[1:3, vars[i]] = Anova(lmer_model3, type = "III")[2:4,3]
-  milestone_anova_tb[4:5, vars[i]] = Anova(lmer_model2, type = "III")[2:2,3]
-  milestone_anova_tb[6, vars[i]] = Anova(lmer_model1, type = "III")[2,3]
+  # Define formulas
+  formula1 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + PND *  `Treatment` * `Sex` + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + (1 | `Litter ID`)")
+  formula31 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + (1 | `Litter ID`)")
+  formula32 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + `Treatment` * `Sex` + (1 | `Litter ID`)")
+  formula33 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + (1 | `Litter ID`)")
+  formula4 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + (1 | `Litter ID`)")
   
+  # Fit models
+  model1 <- fit_model(var, formula1, data, model_type)
+  model2 <- fit_model(var, formula2, data, model_type)
+  model31 <- fit_model(var, formula31, data, model_type)
+  model32 <- fit_model(var, formula32, data, model_type)
+  model33 <- fit_model(var, formula33, data, model_type)
+  model4 <- fit_model(var, formula4, data, model_type)
+  
+  # Summarize and format results
+  coef_indices <- if (model_type == "glmer") c(1, 2, 4) else c(1, 2, 5)
+  summary1 <- format_summary(summary(model1), coef_indices, "Three Interac")
+  summary2 <- format_summary(summary(model2), coef_indices, "Two - Full")
+  summary31 <- format_summary(summary(model31), coef_indices, "Two - No PND x Sex")
+  summary32 <- format_summary(summary(model32), coef_indices, "Two - No Treat x Sex")
+  summary33 <- format_summary(summary(model33), coef_indices, "Two - PND x Treat")
+  summary4 <- format_summary(summary(model4), coef_indices, "Not Interaction")
+  merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2, summary31, summary32, summary33, summary4)
+  merged_summary_list[[i]] <- merged_summary_df
+  
+  # Perform ANOVA
+  milestone_anova_tb[1, var] <- perform_anova(model1)[8]
+  milestone_anova_tb[2:4, var] <- perform_anova(model2)[5:7]
+  milestone_anova_tb[5, var] <- perform_anova(model31)[6]
+  milestone_anova_tb[6, var] <- perform_anova(model32)[6]
+  milestone_anova_tb[7, var] <- perform_anova(model33)[5]
+
 #   emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treatment`,adjust = "none")
 #   milestone_tb_contrast = emm_s.t$contrasts %>%
 #     as.data.frame() %>%
@@ -229,13 +236,38 @@ tx_sex_tbl |>
 
 # Model Results
 
-The relationship between treatment groups and interested variables were assessed using linear mixed effects models or logistic regression with a random litter effect. First we fit a model with treatment groups, sex, and the interaction between them to assess for potential sex differences across the groups.\
+The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models or logistic regression, incorporating a random litter effect.
 
+The regression fitting process followed these steps:
 
+- Fit the 3-way interaction: Begin with a model including all three-way interactions.
+
+- Evaluate the 3-way interaction: If the three-way interaction is not significant, proceed with a model including all two-way interactions.
+
+- Simplify further if needed: If the model with all two-way interactions shows no significant interaction terms involving sex, remove those terms. The final model in this case is: y = time(PND) + trt + sex + PND*trt.
+
+- Fit a no-interaction model if applicable: If the interaction between PND and treatment is not significant, fit a model without interaction terms.
+
+At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
 
 ## ANOVA Table
 
-Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models (treatment-sex interaction, sex additive, and treatment only). There was not sufficient evidence to conclude that there are sex differences between the groups to any of the variables.
+Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models. There was not sufficient evidence to conclude that there are sex differences between the groups to any of the variables.
+
+Three interaction model show the p-value on three way interaction y = time(PND) + trt + sex + time(PND) x trt + time(PND) x sex + trt x sex + *time(PND) x trt x sex*
+
+Two-way interaction full model show the p-value on each two-way interaction y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex* + *trt x sex*
+
+Two-way interaction models show the p-value on each addition two-way interaction:
+
+- y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex*
+
+- y = time(PND) + trt + sex + *time(PND) x trt* + *trt x sex*
+
+Final two-way interaction model (last column) show the p-value on the addition two-way interaction: y = time(PND) + trt + sex + *time(PND) x trt*
+
+**The outcome "Startle" and "Forelimb Grasp" are fitted by logistic regression, and they are all or mostly 1 on p-values due to not enough incidence on the outcomes.**
+
 
 ```{r anova-tb}
 milestone_anova_tb |>
@@ -244,7 +276,7 @@ milestone_anova_tb |>
   flextable::flextable() |>
   flextable::set_caption(
     caption = paste0(
-      "ANOVA Table of Milestone Object in the Three Different Model ",
+      "ANOVA P-Value Table of Milestone Object in the Three Different Model ",
       "(Interaction, Additive, and Basic)"
     )
   ) |>
@@ -263,7 +295,7 @@ milestone_anova_tb |>
 
 ## Estimation Table
 
-The overall estimation tables also displayed here for all the models for an easier comparison.
+The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
 
 ```{r results='asis'}
 # Loop to generate flextables
