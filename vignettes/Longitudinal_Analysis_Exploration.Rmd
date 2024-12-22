@@ -1,0 +1,103 @@
+---
+title: "DRAFT -- TECHNICAL MEMORANDUM"
+subtitle: "<b>TO: </b> Kyoungmi Kim <br> <b> FROM: </b> Matt Ponzini <br> <b> SUBJECT:</b> MAR 4.0 Longitudinal Analyses <br> <b>DATE:</b> `r paste0(' ', Sys.Date())`"
+output: 
+  bookdown::html_document2:
+    number_sections: TRUE
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 24px;
+  font-weight: bolder;
+}
+
+h1 { /* Header 1 */
+  font-size: 16px;
+  font-weight: bold;
+}
+
+h2 { /* Header 2 */
+  font-size: 14px;
+  font-weight: bold;
+}
+
+h3 { /* Header 3 */
+  font-size: 13px;
+  font-weight: bold;
+}
+
+h3.subtitle { /* Header 3 Subtitle */
+  font-size: 20px;
+  font-weight: normal;
+  line-height: 150%;
+}
+
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8,
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+# load packages
+pacman::p_load(dplyr, tibble, tidyr, ggplot2, gtsummary, mar4.0, lmerTest)
+
+# update 'asis' chunk to allow inline code
+knitr::knit_engines$set(asis = function(options) {
+  if (options$echo && options$eval) knitr::knit_child(text = options$code)
+})
+  
+
+internal <- FALSE
+```
+
+<hr style="height:1px;color:black;background-color:black">
+
+# STUDY DESCRIPTION/OBJECTIVE
+
+Behavior differences between Control and MAR rodents. MAR rodents are further classified by the auto-antibody cocktail used to induce MAR.
+
+# DATA PROCESSING
+
+-   Cross-fostered animals are excluded from analysis.  
+-   Data are transformed to long format.  
+-   Time (PND) is treated as categorical (4, 8, or 12).
+
+
+# STATISTICAL ANALYSIS
+
+Generalized linear mixed effects models (with a identity or logit link function) were fit with fixed effects for time (PND), sex, and treatment; and random effects for the individual and the litter. We begin with a full model with a three-way interaction between time, treatment group, and sex, and all nested terms. <b>If the three-way interaction is not significant...</b>
+
+# Results
+
+
+```{r}
+fit1 <- lmerTest::lmer(`Body Length` ~ PND * Treatment * Sex + (1|`Animal ID`) + (1|`Litter ID`),
+                       data = milestones)
+
+gtsummary::tbl_regression(fit1) |>
+  gtsummary::add_global_p()
+```
+
+```{r warning=FALSE, message=FALSE}
+fit2 <- lmerTest::lmer(`Body Length` ~ PND + Treatment + Sex + PND * Treatment +
+                         PND * Sex + Treatment * Sex +
+                         (1|`Animal ID`) + (1|`Litter ID`),
+                       data = milestones)
+
+fit2_tbl <- gtsummary::tbl_regression(fit2) |>
+  gtsummary::add_global_p()
+
+fit3 <- lmerTest::lmer(`Body Length` ~ PND + Treatment + Sex + PND * Treatment + 
+                         (1|`Animal ID`) + (1|`Litter ID`),
+                       data = milestones)
+
+fit3_tbl <- gtsummary::tbl_regression(fit3) |>
+  gtsummary::add_global_p()
+
+gtsummary::tbl_merge(tbls=  list(fit2_tbl, fit3_tbl))
+```

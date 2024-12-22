@@ -7,6 +7,7 @@ graphics.off()
 library(readxl)
 library(dplyr)
 library(Hmisc)
+library(mar4.0)
 # import data
 mar_network <- paste0(
   "S:/MIND/IDDRC Cores/",
@@ -18,11 +19,10 @@ dataset <- readxl::read_xlsx(
   path = paste0(mar_network, "/Data/MAR4.0 NOR All Data.xlsx")
 )
 
-# exclude cross fostered rodents for analysis
-cross_fostered <- c("9_31_1", "9_31_2", "9_31_3", "9_31_4")
-
 ## variable of interest: Discrimination Index
 nor <- dataset |>
+  # exclude cross fostered rodents for analysis
+  mar4.0::exclude_cross_fostered() |>
   dplyr::mutate(
     `Discirmination Index` = as.numeric(`Discirmination Index`),
     Treat = relevel(factor(Treat),ref="Adjuvant+Saline")
@@ -33,8 +33,7 @@ nor <- dataset |>
   ) |>
   dplyr::filter(
     stringr::str_detect(`Trial Type`, 'Test'),
-    `Non Participant?` == 'N',
-    !(`Animal ID` %in% cross_fostered)
+    `Non Participant?` == 'N'
   ) |>
   dplyr::mutate(
     `Discirmination Index` = as.numeric(`Discirmination Index`),

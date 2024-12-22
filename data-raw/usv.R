@@ -33,6 +33,8 @@ exclude <- paste0(pnd_string, "Exclude?")
 
 # reduce to variables of interest
 dataset <- dataset |>
+  # exclude cross fostered rodents for analysis
+  mar4.0::exclude_cross_fostered() |>
   dplyr::select(
     #identifiers and characteristics
     Cohort:Track,
