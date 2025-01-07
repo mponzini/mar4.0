@@ -77,7 +77,10 @@ dataset_long <- dataset |>
       PND == 1 ~ 4,
       PND == 2 ~ 8,
       PND == 3 ~ 12
-    )
+    ) |>
+      factor(
+        levels = c('4', '8', '12')
+      )
   ) |>
   dplyr::arrange(`Animal ID`, DOB) |>
   # replace '-' with NA and convert to numeric
