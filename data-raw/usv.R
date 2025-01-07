@@ -96,5 +96,5 @@ dataset_long <- dataset |>
 
 
 
-usv <- tibble::tibble(dataset)
+usv <- tibble::tibble(dataset_long)
 usethis::use_data(usv, overwrite = TRUE)
