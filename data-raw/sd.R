@@ -31,10 +31,12 @@ dataset <- dataset |>
     ),
     # total social play
     `Total duration Play` = rowSums(
-      dplyr::across(.cols = tidyr::starts_with("Total duration Play"))
+      dplyr::across(.cols = tidyr::starts_with("Total duration Play")),
+      na.rm = T
     ),
     `Total number Play` = rowSums(
-      dplyr::across(.cols = tidyr::starts_with("Total number Play"))
+      dplyr::across(.cols = tidyr::starts_with("Total number Play")),
+      na.rm = T
     )
   ) |>
   # reduce to necessary variables
