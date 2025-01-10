@@ -30,11 +30,21 @@ fit_model <- function(var, formula_str, data, model_type = "lmer") {
   }
 }
 
-
-
 # Function to summarize and format model results
-format_summary <- function(model_summary, coef_indices, column_name) {
-  formatted <- apply(model_summary$coefficients[, coef_indices], 1, function(row) {
+format_summary_lmer <- function(model_summary, column_name) {
+  formatted <- apply(model_summary$coefficients[, c(1,2,4)], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
+    paste0(estimate, " ±", se, " (p", p_value, ")")
+  })
+  formatted_summary <- as.data.frame(formatted)
+  colnames(formatted_summary) <- c(column_name)
+  return(formatted_summary)
+}
+
+format_summary_glmmTMB <- function(model_summary, column_name) {
+  formatted <- apply(model_summary$coefficients$cond[, c(1,2,4)], 1, function(row) {
     estimate <- round(row[1], 3)
     se <- round(row[2], 3)
     p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
@@ -107,16 +117,23 @@ tx_sex_tbl <- sd_data |>
       ),
     .combine_with = 'tbl_stack'
   )
-
-hist(sd_data$`Total duration Non-social (Total)`)
-hist(sd_data$`Total duration Play`)
-hist(sd_data$`Total duration Social Investigation (Total)`)
-hist(sd_data$`Total duration Grooming Self`)
-
 ```
 
 
 ```{r}
+# Comment Code to examine the distribution and model fitting
+# hist(sd_data$`Total duration Non-social (Total)`)
+# hist(sd_data$`Total duration Play`)
+# hist(sd_data$`Total duration Social Investigation (Total)`)
+# hist(sd_data$`Total duration Grooming Self`)
+# sim_res <- DHARMa::simulateResiduals(fittedModel = model1)
+# hist(sim_res$fittedResiduals)
+# Plot residuals vs fitted values
+# DHARMa::plotResiduals(sim_res$fittedPredicted, sim_res$fittedResiduals,
+#               main = "Residuals vs Fitted Values",
+#               xlab = "Fitted Values",
+#               ylab = "Scaled Residuals")
+
 data = sd_data
 vars = c("Total duration Non-social (Total)", 
          "Total duration Play", 
@@ -144,9 +161,14 @@ for (i in 1:length(vars)) {
   model2 <- fit_model(var, formula2, data, model_type)
   
   # Summarize and format results
-  coef_indices <- if (model_type == "glmer") c(1, 2, 4) else c(1, 2, 5)
-  summary1 <- format_summary(summary(model1), coef_indices, "Three Interac")
-  summary2 <- format_summary(summary(model2), coef_indices, "Two - Full")
+  if (model_type == "lmer") {
+    summary1 <- format_summary_lmer(summary(model1), "Three Interac")
+    summary2 <- format_summary_lmer(summary(model2), "Two - Full")
+  } else {
+    summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+    summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+  }
+
   merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
   merged_summary_list[[i]] <- merged_summary_df
   
@@ -228,17 +250,13 @@ tx_sex_tbl |>
 
 # Model Results
 
-The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models or logistic regression, incorporating a random litter effect.
+The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models (Total duration Non-social and Total duration Social Investigation) or generalized regression with *Tweedie* distribution (Total duration Play and Total duration Grooming Self), incorporating a random litter effect. Negative binomial regression also examined but the fitting performance is worse than Tweedie.
 
 The regression fitting process followed these steps:
 
-- Fit the 3-way interaction: Begin with a model including all three-way interactions.
+- Fit the interaction: Begin with a model interactions.
 
-- Evaluate the 3-way interaction: If the three-way interaction is not significant, proceed with a model including all two-way interactions.
-
-- Simplify further if needed: If the model with all two-way interactions shows no significant interaction terms involving sex, remove those terms. The final model in this case is: y = time(PND) + trt + sex + PND*trt.
-
-- Fit a no-interaction model if applicable: If the interaction between PND and treatment is not significant, fit a model without interaction terms.
+- Evaluate the interaction: If the interaction is not significant, proceed with a model without interaction.
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
 
@@ -246,17 +264,7 @@ At this stage, all models ANOVA and estimated results are fitted for internal re
 
 Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models, and below is the explanation of each model:
 
-Three interaction model show the p-value on three way interaction y = time(PND) + trt + sex + time(PND) x trt + time(PND) x sex + trt x sex + *time(PND) x trt x sex*
-
-Two-way interaction full model show the p-value on each two-way interaction y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex* + *trt x sex*
-
-Two-way interaction models show the p-value on each addition two-way interaction:
-
-- y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex*
-
-- y = time(PND) + trt + sex + *time(PND) x trt* + *trt x sex*
-
-Final two-way interaction model (last column) show the p-value on the addition two-way interaction: y = time(PND) + trt + sex + *time(PND) x trt*
+Final two-way interaction model (last column) show the p-value on the addition two-way interaction: y = trt + sex + *time(PND) x trt*
 
 **The outcome "Startle" and "Forelimb Grasp" are fitted by logistic regression, and they are all or mostly 1 on p-values due to not enough incidence on the outcomes.**
 
@@ -277,7 +285,7 @@ usv_anova_tb |>
   ) |>
   flextable::width(
     j = 1,
-    width = 0.7
+    width = 1.5
   ) |>
   flextable::width(
     j = 2,
