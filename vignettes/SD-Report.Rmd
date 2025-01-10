@@ -15,10 +15,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
                flextable, mar4.0)
 sd_data = sd_adult |>
-  rename(Treatment = Treat) |>
-  mutate()
-
-"Total duration Non-social (Total)", "Total duration Social Investigation (Total)", total social play (a total of columns U, V, and W -- I can add a column if needed), `Total duration Grooming Self`
+  rename(Treatment = Treat)
 ```
 
 ```{r}
@@ -27,11 +24,13 @@ sd_data = sd_adult |>
 # Loop through each variable
 fit_model <- function(var, formula_str, data, model_type = "lmer") {
   if (model_type == "glmer") {
-    return(glmer(as.formula(formula_str), data = data, family = binomial(link = "logit")))
+    return(glmmTMB::glmmTMB(as.formula(formula_str), ziformula = ~ 1, family = glmmTMB::tweedie(link = "log"), data = data))
   } else {
     return(lmerTest::lmer(as.formula(formula_str), data = data))
   }
 }
+
+
 
 # Function to summarize and format model results
 format_summary <- function(model_summary, coef_indices, column_name) {
@@ -62,7 +61,7 @@ create_combined_estimate <- function(..., summary_full) {
 
 # Function to perform ANOVA
 perform_anova <- function(model, type = "III") {
-  return(Anova(model, type = type)[, 3])
+  return(Anova(model1, type = type)[, 3])
 }
 ```
 
@@ -72,7 +71,7 @@ perform_anova <- function(model, type = "III") {
 ```{r}
 tx_tbl <- sd_data |>
   dplyr::select(
-    Treatment, `Count`, `Call Length`, `Slope`, `Sinuosity`, `Mean Power`) |>
+    Treatment, `Total duration Non-social (Total)`, `Total duration Social Investigation (Total)`, `Total duration Play`, `Total duration Grooming Self`) |>
   gtsummary::tbl_summary(
     by = Treatment,
     statistic = list(
@@ -87,7 +86,7 @@ tx_tbl <- sd_data |>
 
 tx_sex_tbl <- sd_data |>
   dplyr::select(
-    Treatment, Sex, `Count`, `Call Length`, `Slope`, `Sinuosity`, `Mean Power`) |>
+    Treatment, Sex, `Total duration Non-social (Total)`, `Total duration Social Investigation (Total)`, `Total duration Play`, `Total duration Grooming Self`) |>
   gtsummary::tbl_strata(
     strata = Sex,
     .tbl_fun = 
@@ -109,59 +108,51 @@ tx_sex_tbl <- sd_data |>
     .combine_with = 'tbl_stack'
   )
 
+hist(sd_data$`Total duration Non-social (Total)`)
+hist(sd_data$`Total duration Play`)
+hist(sd_data$`Total duration Social Investigation (Total)`)
+hist(sd_data$`Total duration Grooming Self`)
+
 ```
 
 
 ```{r}
-data = usv |>
-  mutate(PND = relevel(factor(PND), ref = "4"))
-vars = names(usv)[11:15]
+data = sd_data
+vars = c("Total duration Non-social (Total)", 
+         "Total duration Play", 
+         "Total duration Social Investigation (Total)", 
+         "Total duration Grooming Self")
 
-usv_anova_tb <- data.frame(Variables = 
-                                   c("Three Interaction Model",
-                                     "Full Two Interaction - PND*Treat", "Full Two Interaction - PND*Sex",  "Full Two Interaction - Treat*Sex", 
-                                     "Two Interaction - PND*Sex", "Two Interaction - Treat*Sex",
-                                     "Two Inter - PND x Treat Only"))
+usv_anova_tb <- data.frame(Variables = c("Interaction - Treatment",
+                                         "Interaction - Sex",
+                                         "Interaction - Treatment:Sex", 
+                                         "No Interaction - Treatment",
+                                         "No Interaction - Sex"))
 merged_summary_list <- list()
 
 # Main loop
 for (i in 1:length(vars)) {
   var <- vars[i]
-  model_type <- if (var %in% c("Startle", "Forelimb Grasp")) "glmer" else "lmer"
+  model_type <- if (var %in% c("Total duration Play", "Total duration Grooming Self")) "glmer" else "lmer"
   
   # Define formulas
-  formula1 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + PND *  `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula2 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula31 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + (1 | `Litter ID`)")
-  formula32 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula33 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + (1 | `Litter ID`)")
-  formula4 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + (1 | `Litter ID`)")
-  
+  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex`  + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  (1 | `Litter ID`)")
+
   # Fit models
   model1 <- fit_model(var, formula1, data, model_type)
   model2 <- fit_model(var, formula2, data, model_type)
-  model31 <- fit_model(var, formula31, data, model_type)
-  model32 <- fit_model(var, formula32, data, model_type)
-  model33 <- fit_model(var, formula33, data, model_type)
-  model4 <- fit_model(var, formula4, data, model_type)
   
   # Summarize and format results
   coef_indices <- if (model_type == "glmer") c(1, 2, 4) else c(1, 2, 5)
   summary1 <- format_summary(summary(model1), coef_indices, "Three Interac")
   summary2 <- format_summary(summary(model2), coef_indices, "Two - Full")
-  summary31 <- format_summary(summary(model31), coef_indices, "Two - No PND x Sex")
-  summary32 <- format_summary(summary(model32), coef_indices, "Two - No Treat x Sex")
-  summary33 <- format_summary(summary(model33), coef_indices, "Two - PND x Treat")
-  summary4 <- format_summary(summary(model4), coef_indices, "Not Interaction")
-  merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2, summary31, summary32, summary33, summary4)
+  merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
   merged_summary_list[[i]] <- merged_summary_df
   
   # Perform ANOVA
-  usv_anova_tb[1, var] <- perform_anova(model1)[8]
-  usv_anova_tb[2:4, var] <- perform_anova(model2)[5:7]
-  usv_anova_tb[5, var] <- perform_anova(model31)[6]
-  usv_anova_tb[6, var] <- perform_anova(model32)[6]
-  usv_anova_tb[7, var] <- perform_anova(model33)[5]
+  usv_anova_tb[1:3, var] <- perform_anova(model1)[2:4]
+  usv_anova_tb[4:5, var] <- perform_anova(model2)[2:3]
 
 #   emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treatment`,adjust = "none")
 #   usv_tb_contrast = emm_s.t$contrasts %>%

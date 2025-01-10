@@ -52,7 +52,8 @@ dataset <- dataset |>
     `Total number Non-social (Total)`,
     `Total number Social Investigation (Total)`,
     `Total number Grooming Self`
-  )
+  )|>
+  dplyr::mutate(`Total duration Grooming Self` = ifelse(is.na(as.numeric(`Total duration Grooming Self`)), 0, as.numeric(`Total duration Grooming Self`))) # convert to 0 if NA
 
 sd_juv <- dataset |>
   dplyr::filter(
