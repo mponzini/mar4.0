@@ -1,5 +1,5 @@
 ---
-title: "MAR 4.0 - U=USV"
+title: "MAR 4.0 - USV"
 output: 
   bookdown::word_document2:
     number_section: false

@@ -22,6 +22,8 @@ dataset <- readxl::read_xlsx(
 
 # reduce to variables of interest
 dataset <- dataset |>
+  # exclude cross fostered rodents for analysis
+  mar4.0::exclude_cross_fostered() |>
   dplyr::select(-c(Cohort, DOB))
 
 # convert to long format
