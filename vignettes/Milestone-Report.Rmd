@@ -106,6 +106,30 @@ tx_sex_tbl <- milestones |>
     .combine_with = 'tbl_stack'
   )
 
+tx_pnd_tbl <- milestones |>
+  dplyr::select(
+    Treatment, Sex, PND, `Body Length`, `Tail Length`, `Belly Temp`, `Body Weight`, `Righting Reflex`, 
+    `Circle Traverse`, `Negative Geotaxis`, `Cliff Avoidance`, Startle, `Forelimb Grasp`) |>
+  gtsummary::tbl_strata(
+    strata = PND,
+    .tbl_fun = 
+      ~ .x |>
+      gtsummary::tbl_summary(
+        by = Treatment,
+        statistic = list(
+          gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})",
+            "{median} [{p25}, {p75}]",
+            "{min}, {max}"
+          )
+        )
+      ) |>
+      gtsummary::add_overall() |>
+      gtsummary::modify_header(
+        gtsummary::all_stat_cols() ~ "**{level}**"
+      ),
+    .combine_with = 'tbl_stack'
+  )
 ```
 
 
@@ -174,6 +198,16 @@ milestone_anova_tb = milestone_anova_tb |>
   column_to_rownames(var = "Variables") |>
   t() |>
   round(3)
+
+var = vars[1]
+model_type <- if (var %in% c("Startle", "Forelimb Grasp")) "glmer" else "lmer"
+  formula1 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + PND *  `Treatment` * `Sex` + (1 | `Litter ID`)")
+  model1 <- fit_model(var, formula1, data, model_type)
+  summary(model1)
+  
+  formula2 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + PND *  `Treatment` * `Sex` + (1 | `Litter ID`) + (0 + PND|Treatment)")
+  model2 <- fit_model(var, formula2, data, model_type)
+  summary(model2)
 ```
 
 
@@ -217,8 +251,30 @@ tx_sex_tbl |>
   gtsummary::as_flex_table() |>
   flextable::set_caption(
     caption = paste0(
-      "Summary of Milestone by Treatment Groups, stratified",
+      "Summary of Milestone by Treatment Groups, stratified ",
       "by Sex."
+    )
+  ) |>
+  flextable::width(
+    width = 1.15
+  ) |>
+  flextable::width(
+    j = 1,
+    width = 0.7
+  ) |>
+  flextable::width(
+    j = 2,
+    width = 1.16
+  )
+```
+
+```{r summary-tbl-sex}
+tx_pnd_tbl |>
+  gtsummary::as_flex_table() |>
+  flextable::set_caption(
+    caption = paste0(
+      "Summary of Milestone by Treatment Groups, stratified ",
+      "by Time Period"
     )
   ) |>
   flextable::width(
