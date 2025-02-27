@@ -13,7 +13,9 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
-               flextable, mar4.0)
+               flextable, rstatix, ggpubr, mar4.0)
+knitr::opts_chunk$set(fig.width=14, fig.height=8)
+fig_n = 0
 ```
 
 ```{r}
@@ -42,134 +44,158 @@ format_summary <- function(model_summary, coef_indices, column_name) {
 }
 
 # Function to combine different model estimates into one table and ordered by the summary_fullmodel (for the same variable).
-create_combined_estimate <- function(..., summary_full) {
+create_combined_estimate <- function(summary_full, ...) {
   summaries <- list(summary_full, ...)
   merged_data <- summaries[[1]]
+  
   for (i in 2:length(summaries)) {
-    merged_data <- merge(merged_data, summaries[[i]], by = "row.names", all = TRUE)
-    rownames(merged_data) <- merged_data$Row.names
-    merged_data <- merged_data[ , !(colnames(merged_data) %in% "Row.names")]
+    merged_data <- full_join(merged_data, summaries[[i]], by = "Effect")
   }
-  ordered_data <- merged_data[order(match(rownames(merged_data), rownames(summary_full))), ]
-  ordered_data[is.na(ordered_data)] = ""
-  return(ordered_data)
+  
+  # Convert numeric columns (p-values) to 4 decimal places (non-scientific)
+  numeric_cols <- sapply(merged_data, is.numeric)
+  merged_data[numeric_cols] <- lapply(merged_data[numeric_cols], function(x) {
+    ifelse(is.na(x), "", as.character(format(round(x, 4), nsmall = 4, scientific = FALSE)))
+  })
+  
+  return(merged_data)
 }
 
 # Function to perform ANOVA
 perform_anova <- function(model, type = "III") {
   return(Anova(model, type = type)[, 3])
 }
-```
 
 
+# Function to return the gtsummary-table by input dataset and outcome
+summary_tbls <- function(
+    dataset, outcome
+) {
 
-
-```{r}
-tx_tbl <- usv |>
-  dplyr::select(
-    Treatment, `Count`, `Call Length`, `Slope`, `Sinuosity`, `Mean Power`) |>
-  gtsummary::tbl_summary(
-    by = Treatment,
-    statistic = list(
-      gtsummary::all_continuous2() ~ c(
-        "{mean} ({sd})",
-        "{median} [{p25}, {p75}]",
-        "{min}, {max}"
-      )
+  tbl_male <- dataset |>
+    dplyr::filter(Sex == "M") |>
+    dplyr::select(Treatment, PND, dplyr::all_of(outcome)) |>
+    gtsummary::tbl_strata(
+      strata = PND,
+      .tbl_fun = ~ .x |>
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = where(is.numeric) ~ "continuous2",
+          statistic = gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+          ) 
+        ) |> gtsummary::add_overall(),,
+      .combine_with = "tbl_stack"
+    ) |>
+    gtsummary::modify_spanning_header(
+      gtsummary::all_stat_cols() ~ "Males"
     )
-  ) |>
-  gtsummary::add_overall()
 
-tx_sex_tbl <- usv |>
-  dplyr::select(
-    Treatment, Sex, `Count`, `Call Length`, `Slope`, `Sinuosity`, `Mean Power`) |>
-  gtsummary::tbl_strata(
-    strata = Sex,
-    .tbl_fun = 
-      ~ .x |>
-      gtsummary::tbl_summary(
-        by = Treatment,
-        statistic = list(
-          gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})",
-            "{median} [{p25}, {p75}]",
-            "{min}, {max}"
+  tbl_female <- dataset |>
+    dplyr::filter(Sex == "F") |>
+    dplyr::select(Treatment, PND, dplyr::all_of(outcome)) |>
+    gtsummary::tbl_strata(
+      strata = PND,
+      .tbl_fun = ~ .x |>
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = where(is.numeric) ~ "continuous2",
+          statistic = gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
           )
-        )
-      ) |>
-      gtsummary::add_overall() |>
-      gtsummary::modify_header(
-        gtsummary::all_stat_cols() ~ "**{level}**"
-      ),
-    .combine_with = 'tbl_stack'
+        ) |> gtsummary::add_overall(),
+      .combine_with = "tbl_stack"
+    ) |>
+    gtsummary::modify_spanning_header(
+      gtsummary::all_stat_cols() ~ "Females"
+    )
+
+  ans <- list(
+    "males" = tbl_male,
+    "females" = tbl_female
   )
 
+  return(ans)
+}
 ```
 
-
 ```{r}
-data = usv |>
-  mutate(PND = relevel(factor(PND), ref = "4"))
-vars = names(usv)[11:15]
+# Ensure PND is a factor with reference level set to "4"
+usv <- usv |>
+  mutate(PND = factor(PND, levels = unique(PND)), PND = relevel(PND, ref = "4"))
 
-usv_anova_tb <- data.frame(Variables = 
-                                   c("Three Interaction Model",
-                                     "Full Two Interaction - PND*Treat", "Full Two Interaction - PND*Sex",  "Full Two Interaction - Treat*Sex", 
-                                     "Two Interaction - PND*Sex", "Two Interaction - Treat*Sex",
-                                     "Two Inter - PND x Treat Only"))
+# Variables to analyze, including Count
+vars <- names(usv)[11:15] 
+
+# Create ANOVA results table
 merged_summary_list <- list()
+boxplot_list <- list()
 
-# Main loop
-for (i in 1:length(vars)) {
+# Main loop over variables
+for (i in seq_along(vars)) {
   var <- vars[i]
-  model_type <- if (var %in% c("Startle", "Forelimb Grasp")) "glmer" else "lmer"
   
-  # Define formulas
-  formula1 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + PND *  `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula2 <-  paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula31 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + PND * `Sex` + (1 | `Litter ID`)")
-  formula32 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + `Treatment` * `Sex` + (1 | `Litter ID`)")
-  formula33 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + PND * `Treatment` + (1 | `Litter ID`)")
-  formula4 <- paste0("`", var, "` ~ PND + `Treatment` + `Sex` + (1 | `Litter ID`)")
-  
-  # Fit models
-  model1 <- fit_model(var, formula1, data, model_type)
-  model2 <- fit_model(var, formula2, data, model_type)
-  model31 <- fit_model(var, formula31, data, model_type)
-  model32 <- fit_model(var, formula32, data, model_type)
-  model33 <- fit_model(var, formula33, data, model_type)
-  model4 <- fit_model(var, formula4, data, model_type)
-  
-  # Summarize and format results
-  coef_indices <- if (model_type == "glmer") c(1, 2, 4) else c(1, 2, 5)
-  summary1 <- format_summary(summary(model1), coef_indices, "Three Interac")
-  summary2 <- format_summary(summary(model2), coef_indices, "Two - Full")
-  summary31 <- format_summary(summary(model31), coef_indices, "Two - No PND x Sex")
-  summary32 <- format_summary(summary(model32), coef_indices, "Two - No Treat x Sex")
-  summary33 <- format_summary(summary(model33), coef_indices, "Two - PND x Treat")
-  summary4 <- format_summary(summary(model4), coef_indices, "Not Interaction")
-  merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2, summary31, summary32, summary33, summary4)
-  merged_summary_list[[i]] <- merged_summary_df
-  
-  # Perform ANOVA
-  usv_anova_tb[1, var] <- perform_anova(model1)[8]
-  usv_anova_tb[2:4, var] <- perform_anova(model2)[5:7]
-  usv_anova_tb[5, var] <- perform_anova(model31)[6]
-  usv_anova_tb[6, var] <- perform_anova(model32)[6]
-  usv_anova_tb[7, var] <- perform_anova(model33)[5]
+  # Data preparation (ensure complete cases)
+  usv_fct_compete <- usv |>
+    dplyr::mutate(
+      Treatment = factor(Treatment, levels = c(
+        "Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA",
+        "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE"
+      )),
+      Sex = factor(Sex, levels = c("M", "F")),
+      Litter = factor(`Litter ID`),
+      Animal = factor(`Animal ID`)
+    ) |>
+    dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
 
-#   emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treatment`,adjust = "none")
-#   usv_tb_contrast = emm_s.t$contrasts %>%
-#     as.data.frame() %>%
-#     select(estimate, p.value) %>%
-#     mutate(across(everything(), ~ round(.x, 3)))
-#   rownames(usv_tb_contrast) <- rownames(emm_s.t$contrasts)
+  # Perform 3-way ANOVA (Treatment * Sex * PND)
+  mix_aov_3way <- rstatix::anova_test(
+    dv = !!sym(var), 
+    wid = Animal, 
+    between = c(Treatment, Sex), 
+    within = PND, 
+    data = usv_fct_compete, 
+    type = 3
+  )
+
+  # Perform 2-way ANOVA (Treatment * PND)
+  mix_aov_2way <- rstatix::anova_test(
+    dv = !!sym(var), 
+    wid = Animal, 
+    between = c(Treatment), 
+    within = PND, 
+    data = usv_fct_compete, 
+    type = 3
+  )
+
+  # Extract p-values from ANOVA tests
+  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)  # Adjust indices based on output structure
+  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p) # Adjust indices based on output structure
+
+  combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
+  
+  # Store results in list format for further use
+  merged_summary_list[[var]] <- combined_anova_results
+  
+  # Perform T-test comparisons and merge the result into the boxplot (non-paired t-tests with Bonferroni correction)
+  pwc <- usv_fct_compete %>%
+    group_by(PND) %>%
+    rstatix::pairwise_t_test(as.formula(paste0("`", var, "` ~ Treatment")), 
+                             paired = FALSE, p.adjust.method = "bonferroni") %>%
+    rstatix::add_xy_position(x = "PND")
+
+  
+  boxplot_list[[var]] <- ggpubr::ggboxplot(
+    usv_fct_compete, x = "PND", y = var,
+    color = "Treatment", palette = "Sex"
+    ) +
+    stat_pvalue_manual(pwc, tip.length = 0, hide.ns = TRUE) +
+    labs(
+      subtitle = get_test_label(mix_aov_2way, detailed = TRUE),
+      caption = get_pwc_label(pwc)
+    )
 }
 
-usv_anova_tb = usv_anova_tb |> 
-  column_to_rownames(var = "Variables") |>
-  t() |>
-  round(3)
 ```
 
 
@@ -181,68 +207,47 @@ We are going to run the analysis use R-package structure within github. R 4.4.1 
 
 # Data Processing
 
-The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a final sample size of `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. 
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. 
 
 The interested variables at USVs data are: `r paste(vars, collapse = ", ")`.
 
 # Summary statistics
 
-The all interested variables were summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by Treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
+The all interested variables were summarized by Treatment group overall, stratified by Time and Sex (Table \@ref(tab:summary-tbl)).
 
-```{r summary-tbl}
-tx_tbl |>
-  gtsummary::as_flex_table() |>
-  flextable::set_caption(
-    caption = paste0(
-      "Summary of USV by Treatment Groups."
-    )
-  ) |>
-  flextable::width(
-    width = 1.15
-  ) |>
-  flextable::width(
-    j = 1,
-    width = 1.16
-  )
-```
+```{r summary-tbl, results='asis'}
+for (i in seq_along(vars)) {
+  # Generate the list of gtsummary tables
+  summary_list <- summary_tbls(usv, vars[i])
 
-\
+  # Use Map() to ensure vars[i] correctly maps to each table
+  Map(function(tbl, var_name) {
+    tbl |>
+      gtsummary::as_flex_table() |>
+      flextable::set_caption(
+        caption = flextable::as_paragraph(
+          "Summary of ", 
+          flextable::as_chunk(var_name, props = officer::fp_text(bold = TRUE)),  # Bold the variable name
+          " by Treatment Groups with Time Stratification (4, 8, and 12th week)."
+        )
+      ) |>
+      flextable::width(width = 1.15) |>
+      flextable::width(j = 1, width = 1.16) |>
+      flextable::flextable_to_rmd()
+  }, summary_list, vars[i])
+}
 
-```{r summary-tbl-sex}
-tx_sex_tbl |>
-  gtsummary::as_flex_table() |>
-  flextable::set_caption(
-    caption = paste0(
-      "Summary of USV by Treatment Groups, stratified",
-      "by Sex."
-    )
-  ) |>
-  flextable::width(
-    width = 1.15
-  ) |>
-  flextable::width(
-    j = 1,
-    width = 0.7
-  ) |>
-  flextable::width(
-    j = 2,
-    width = 1.16
-  )
 ```
 
 # Model Results
 
-The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models or logistic regression, incorporating a random litter effect.
+The relationship between treatment groups and variables of interest was assessed using repeated ANOVA (or logistic regression), incorporating an individual level random effect.
 
 The regression fitting process followed these steps:
 
 - Fit the 3-way interaction: Begin with a model including all three-way interactions.
 
-- Evaluate the 3-way interaction: If the three-way interaction is not significant, proceed with a model including all two-way interactions.
-
-- Simplify further if needed: If the model with all two-way interactions shows no significant interaction terms involving sex, remove those terms. The final model in this case is: y = time(PND) + trt + sex + PND*trt.
-
-- Fit a no-interaction model if applicable: If the interaction between PND and treatment is not significant, fit a model without interaction terms.
+- If the 3-way interaction term from the ANOVA table is not statistically significant, we move to the model with two-way interactions (without sex variable).
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
 
@@ -250,50 +255,59 @@ At this stage, all models ANOVA and estimated results are fitted for internal re
 
 Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models, and below is the explanation of each model:
 
-Three interaction model show the p-value on three way interaction y = time(PND) + trt + sex + time(PND) x trt + time(PND) x sex + trt x sex + *time(PND) x trt x sex*
+Three interaction model show the p-value on three way interaction y = time(PND) * trt * sex
 
-Two-way interaction full model show the p-value on each two-way interaction y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex* + *trt x sex*
+Two-way interaction model exclude sex show the p-value on two-way interaction y = time(PND) * trt
 
-Two-way interaction models show the p-value on each addition two-way interaction:
+The models also accounts for within-subjects effect by animal individual level, and all p-values are calculated throught Type-III ANOVA Test, using "rstatix" package.
 
-- y = time(PND) + trt + sex + *time(PND) x trt* + *time(PND) x sex*
+Additionally, we use boxplots for intuitive visualizations that each pair of groups within the same time period are tested by t-test with a combination of Bonferroni p-value adjust method (more * means more significiance of the pair-wised t-test).
 
-- y = time(PND) + trt + sex + *time(PND) x trt* + *trt x sex*
+```{r anova-tb, results='asis'}
 
-Final two-way interaction model (last column) show the p-value on the addition two-way interaction: y = time(PND) + trt + sex + *time(PND) x trt*
+for (i in seq_along(vars)) {
+  # Create flextable summary table
+  summary_table <- merged_summary_list[[i]] |>
+    as.data.frame() |>
+    tibble::rownames_to_column("Variable") |>
+    flextable::flextable() 
 
-**The outcome "Startle" and "Forelimb Grasp" are fitted by logistic regression, and they are all or mostly 1 on p-values due to not enough incidence on the outcomes.**
+  # Fix caption formatting issues for Word output
+  if (knitr::opts_knit$get("rmarkdown.pandoc.to") == "docx") {
+    summary_table <- summary_table |>
+      flextable::set_caption(
+        caption = paste0("Model Estimation Result - ", vars[i])
+      ) |>
+      flextable::set_table_properties(layout = "autofit")
+  } else {
+    summary_table <- summary_table |>
+      flextable::set_caption(
+        caption = paste0("Model Estimation Result - ", vars[i])
+      )
+  }
 
+  # Ensure correct rendering in RMarkdown for Word
+  cat(flextable::flextable_to_rmd(summary_table), "\n")
 
-```{r anova-tb}
-usv_anova_tb |>
-  as.data.frame() |>
-  tibble::rownames_to_column("Variable") |>
-  flextable::flextable() |>
-  flextable::set_caption(
-    caption = paste0(
-      "ANOVA P-Value Table of USV Object in the Three Different Model ",
-      "(Interaction, Additive, and Basic)"
-    )
-  ) |>
-  flextable::width(
-    width = 1.15
-  ) |>
-  flextable::width(
-    j = 1,
-    width = 0.7
-  ) |>
-  flextable::width(
-    j = 2,
-    width = 1.16
-  )
+  # Print the boxplot
+  print(boxplot_list[[i]])
+
+  # Another page break before the next iteration
+  fig_n = fig_n + 1
+  cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
+}
+
 ```
 
+
+
+```{r results='asis' , eval=FALSE}
+# Put here for backup, if don't need later, should be deleted.
+
 ## Estimation Table
+# The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
 
-The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
-
-```{r results='asis'}
 # Loop to generate flextables
 for (i in 1:length(vars)) {
   merged_summary_list[[i]] |>
