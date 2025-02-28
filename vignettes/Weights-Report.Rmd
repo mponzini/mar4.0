@@ -122,44 +122,44 @@ rstatix::get_anova_table(weight_anova) |>
 
 
 ```{r}
-# fig1 <- summary_df |>
-#   ggplot2::ggplot() +
-#   ggplot2::aes(
-#     x = Week, y = Mean, color = Sex, group = Sex
-#   ) +
-#   ggplot2::geom_point() +
-#   ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD)) +
-#   ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
-#   ggplot2::facet_wrap(~Treatment) +
-#   ggplot2::theme_bw()
+fig1 <- summary_df |>
+  ggplot2::ggplot() +
+  ggplot2::aes(
+    x = Week, y = Mean, color = Sex, group = Sex
+  ) +
+  ggplot2::geom_point() +
+  ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD)) +
+  ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
+  ggplot2::facet_wrap(~Treatment) +
+  ggplot2::theme_bw()
 
 # lemon::gtable_show_names(fig1)
-# lemon::reposition_legend(fig1, position = 'center', panel = "panel-3-2")
+lemon::reposition_legend(fig1, position = 'center', panel = "panel-3-2")
 
-ggpubr::ggboxplot(
-  weights_complete, x = "Week", y = "Weights",
-    facet.by = "Treatment", color = "Sex"
-)
+# ggpubr::ggboxplot(
+#   weights_complete, x = "Week", y = "Weights",
+#     facet.by = "Treatment", color = "Sex"
+# )
 ```
 
 
 ```{r}
-# summary_df |>
-#   ggplot2::ggplot() +
-#   ggplot2::aes(
-#     x = Week, y = Mean, color = Treatment, group = Treatment
-#   ) +
-#   ggplot2::geom_point(position = ggplot2::position_dodge(width = 0.5)) +
-#   ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD),
-#                          position = ggplot2::position_dodge(width = 0.5)) +
-#   ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
-#   ggplot2::facet_wrap(~Sex) +
-#   ggplot2::guides(color = ggplot2::guide_legend(nrow = 2)) +
-#   ggplot2::theme_bw() +
-#   ggplot2::theme(legend.position = "bottom")
+summary_df |>
+  ggplot2::ggplot() +
+  ggplot2::aes(
+    x = Week, y = Mean, color = Treatment, group = Treatment
+  ) +
+  ggplot2::geom_point(position = ggplot2::position_dodge(width = 0.5)) +
+  ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD),
+                         position = ggplot2::position_dodge(width = 0.5)) +
+  ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
+  ggplot2::facet_wrap(~Sex) +
+  ggplot2::guides(color = ggplot2::guide_legend(nrow = 2)) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(legend.position = "bottom")
 
-ggpubr::ggboxplot(
-    weights_complete, x = "Week", y = "Weights",
-    color = "Treatment", facet.by = "Sex"
-)
+# ggpubr::ggboxplot(
+#     weights_complete, x = "Week", y = "Weights",
+#     color = "Treatment", facet.by = "Sex"
+# )
 ```

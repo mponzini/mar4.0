@@ -162,8 +162,9 @@ for (i in seq_along(vars)) {
   mix_aov_2way <- rstatix::anova_test(
     dv = !!sym(var), 
     wid = Animal, 
-    between = c(Treatment), 
+    between = Treatment, 
     within = PND, 
+    covariate = Sex,
     data = usv_fct_compete, 
     type = 3
   )
