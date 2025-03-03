@@ -120,7 +120,8 @@ summary_tbls <- function(
 data = milestones |>
   mutate(Startle = ifelse(Startle=="N",0,1),
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
-         PND = relevel(factor(PND), ref = "4"))
+         PND = relevel(factor(PND), ref = "4"),
+         `Righting Reflex` = log2(`Righting Reflex`))
 
 # Variables to analyze, including Count
 vars = names(data)[11:20]
