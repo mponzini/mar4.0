@@ -122,6 +122,8 @@ data = milestones |>
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
          PND = relevel(factor(PND), ref = "4"))
 
+
+
 # Variables to analyze, including Count
 vars = names(data)[11:20]
 vars_numeric = 1:8
@@ -148,6 +150,18 @@ for (i in vars_numeric) {
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
 
+  ###################################################################
+  ## exclude extreme for `Righting Reflex`
+  data_fct_compete <- data_fct_compete |>
+    filter((`Righting Reflex` < 30 & PND == 4) | 
+             (`Righting Reflex` < 20 & PND == 8) |
+             (`Righting Reflex` < 5 & PND == 12)
+           ) 
+  # data_fct_compete |> filter(`Righting Reflex`>30)
+  # data_fct_compete |> filter(`Righting Reflex`>20 &  PND == 8)
+  # data_fct_compete |> filter(`Righting Reflex`>5 &  PND == 12)
+  ###################################################################
+  
   # Perform 3-way ANOVA (Treatment * Sex * PND)
   mix_aov_3way <- rstatix::anova_test(
     dv = !!sym(var), 
@@ -196,6 +210,11 @@ for (i in vars_numeric) {
       caption = get_pwc_label(pwc)
     )
 }
+
+
+
+
+
 
 ```
 
@@ -306,6 +325,8 @@ Type III ANOVA table displays the anova p-values for each variable in each model
 The models also account for within-subjects variation attributed to animals (i.e, inter-animal variability within the same treatment group), and all p-values are calculated through Type-III sum of squares of residuals, using the R “rstatix” package.
 
 Additionally, we use boxplots for intuitive visualizations for cross-sectional pairwise group comparisons at each time point tested by t-test with a combination of Bonferroni adjustment method (more * means more significance of the pairwise t-test).
+
+- *Some Righting Reflex are excluded (n = 4): At PND 4, 9_42_2 has 55.8, at PND 8, 9_42_7 has 27.4, and at PND 12, 9_15_8 and 9_45_1 have 6.06 and 5.95.*
 
 ```{r anova-tb, results='asis'}
 
