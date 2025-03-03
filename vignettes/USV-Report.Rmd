@@ -232,7 +232,7 @@ for (i in seq_along(vars)) {
     tab_n <<- tab_n + 1  
     cat(paste0("\nTable ", tab_n, 
                ": Summary of ", 
-               as.character(flextable::as_chunk(var_name, props = officer::fp_text(bold = TRUE))), 
+               var_name, 
                " by Treatment Groups with Time Stratification (4, 8, and 12th week).\n\n"))
   })
 }
@@ -287,46 +287,45 @@ for (i in seq_along(vars)) {
   fig_n = fig_n + 1
   cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n\n"))
 
-  
-  DescTools::DunnettTest(x = usv[!is.na(usv[vars[i]]),vars[i]] |> unlist(),g = usv$Treatment[!is.na(usv[vars[i]])]|> unlist())$`Adjuvant+Saline` |>
-    as.data.frame() |>
-    rownames_to_column("Comparison") |>
-    mutate(
-      Effect_Size = round(diff, 3),  # Round effect size to 3 decimals
-      Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),  # Round CI
-      P_Value = formatC(round(pval, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-    ) |>
-    select(
-      Group_Comparison = Comparison,  
-      Effect_Size,                    
-      Confidence_Interval,            
-      P_Value                         
-    ) |>
-    flextable::flextable() |>
-    flextable::set_table_properties(layout = "autofit") |>
-    flextable::flextable_to_rmd()
-  tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Dunnett's test for comparing several treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
-  
-  TukeyHSD(aov(as.formula(paste0("`", vars[i], "` ~ Treatment")), data = usv|>filter(Treatment!="Adjuvant+Saline")))$Treatment |>
-    as.data.frame() |>
-    rownames_to_column("Comparison") |>
-    mutate(
-      Effect_Size = round(diff, 3),  
-      Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),  # Round CI
-      P_Value = formatC(round(`p adj`, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-    ) |>
-    select(
-      Group_Comparison = Comparison, 
-      Effect_Size,                  
-      Confidence_Interval,           
-      P_Value                         
-    ) |>
-    flextable::flextable() |>
-    flextable::set_table_properties(layout = "autofit") |>
-    flextable::flextable_to_rmd()
-  tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Tukey multiple comparisons of means 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  # DescTools::DunnettTest(x = usv[!is.na(usv[vars[i]]),vars[i]] |> unlist(),g = usv$Treatment[!is.na(usv[vars[i]])]|> unlist())$`Adjuvant+Saline` |>
+  #   as.data.frame() |>
+  #   rownames_to_column("Comparison") |>
+  #   mutate(
+  #     Effect_Size = round(diff, 3),  # Round effect size to 3 decimals
+  #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),  # Round CI
+  #     P_Value = formatC(round(pval, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
+  #   ) |>
+  #   select(
+  #     Group_Comparison = Comparison,  
+  #     Effect_Size,                    
+  #     Confidence_Interval,            
+  #     P_Value                         
+  #   ) |>
+  #   flextable::flextable() |>
+  #   flextable::set_table_properties(layout = "autofit") |>
+  #   flextable::flextable_to_rmd()
+  # tab_n = tab_n + 1
+  # cat(paste0("\nTable ",tab_n, ": Dunnett's test for comparing several treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+  # 
+  # TukeyHSD(aov(as.formula(paste0("`", vars[i], "` ~ Treatment")), data = usv|>filter(Treatment!="Adjuvant+Saline")))$Treatment |>
+  #   as.data.frame() |>
+  #   rownames_to_column("Comparison") |>
+  #   mutate(
+  #     Effect_Size = round(diff, 3),  
+  #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),  # Round CI
+  #     P_Value = formatC(round(`p adj`, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
+  #   ) |>
+  #   select(
+  #     Group_Comparison = Comparison, 
+  #     Effect_Size,                  
+  #     Confidence_Interval,           
+  #     P_Value                         
+  #   ) |>
+  #   flextable::flextable() |>
+  #   flextable::set_table_properties(layout = "autofit") |>
+  #   flextable::flextable_to_rmd()
+  # tab_n = tab_n + 1
+  # cat(paste0("\nTable ",tab_n, ": Tukey multiple comparisons of means 95% family-wise confidence level - ", vars[i] ,"\n\n"))
   cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
 ```
