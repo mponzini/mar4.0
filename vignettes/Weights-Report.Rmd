@@ -1,0 +1,165 @@
+---
+title: "MAR 4.0 - Weights"
+output: 
+  bookdown::word_document2:
+    number_section: false
+    reference_docx: docx_landscape.docx
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.width = 9, fig.height = 6)
+pacman::p_load(mar4.0, flextable, ggplot2, dplyr, tidyr)
+```
+
+```{r analysis, include=FALSE}
+# reduce to complete data for ANOVA
+weights_complete <- weights |>
+  dplyr::filter(Week < 21) |>
+  dplyr::mutate(
+    Treatment = factor(
+      Treatment, 
+      levels = c(
+        "Adjuvant+Saline", "LDHA+LDHB+CRMP1+STIP1", 
+        "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE"
+      )
+    ),
+    Sex = factor(Sex, levels = c("M", "F")),
+    Litter = factor(`Litter ID`),
+    Animal = factor(`Animal ID`),
+    Week = factor(Week)
+  ) |>
+  dplyr::filter(
+    dplyr::if_all(
+      .cols = c(Animal, Weights),
+      ~ !is.na(.x)
+    )
+  )
+
+# fit mixed ANOVA using rstatix::anova_test
+weight_anova <- rstatix::anova_test(
+  data = weights_complete,
+  dv = Weights,
+  wid = Animal,
+  between = c(Treatment, Sex),
+  within = Week,
+  type = 3
+)  
+
+# summarize weights over time by Treatment and Sex
+summary_df <- weights_complete |>
+  dplyr::summarise(
+    Mean = mean(Weights),
+    SD = sd(Weights),
+    .by = c(Treatment, Sex, Week)
+  )
+
+summary_df_wide <- summary_df |>
+  dplyr::mutate(
+    `Mean SD` = paste0(
+      round(Mean, 2), " (",
+      round(SD, 2), ")"
+    )
+  ) |>
+  dplyr::select(-c(Mean, SD)) |>
+  tidyr::unite("tx_sex", Treatment, Sex) |>
+  tidyr::pivot_wider(
+    id_cols = Week,
+    names_from = tx_sex,
+    values_from = `Mean SD`
+  ) |>
+  dplyr::arrange(Week)
+
+summary_df_wide_sex <- summary_df_wide |>
+  dplyr::select(Week, tidyselect::ends_with("_M"), tidyselect::ends_with("_F"))
+```
+
+
+```{r}
+summary_df_wide_sex |>
+  flextable::flextable() |>
+  flextable::set_header_labels(
+    values = list(
+      `CRMP1+GDA_M` = "CRMP1+GDA",
+      `Adjuvant+Saline_M` = "Adjuvant+Saline",
+      `CRMP1+CRMP2_M` = "CRMP1+CRMP2",
+      `STIP1+NSE_M` = "STIP1+NSE",
+      `LDHA+LDHB+CRMP1+STIP1_M` = "LDHA+LDHB+CRMP1+STIP1",
+      `CRMP1+GDA_F` = "CRMP1+GDA",
+      `Adjuvant+Saline_F` = "Adjuvant+Saline",
+      `CRMP1+CRMP2_F` = "CRMP1+CRMP2",
+      `STIP1+NSE_F` = "STIP1+NSE",
+      `LDHA+LDHB+CRMP1+STIP1_F` = "LDHA+LDHB+CRMP1+STIP1"
+    )
+  ) |>
+  flextable::vline(
+    j = c(1, 6)
+  ) |>
+  flextable::add_header_row(
+    values = c("", "Male", "Female"),
+    colwidths = c(1, 5, 5)
+  ) |>
+  flextable::align(i = 1, align = "center", part = "header")
+```
+
+\
+
+```{r}
+rstatix::get_anova_table(weight_anova) |>
+  tibble::as_tibble() |>
+  dplyr::mutate(
+    p = format(round(p, 3), nsmall = 3),
+    p = dplyr::if_else(p == "0.000", "<0.001", p)
+  ) |>
+  dplyr::select(Effect, DFn, DFd, `F`, p) |>
+  flextable::flextable() |>
+  flextable::width(j = 1, width = 1.75) |>
+  flextable::width(j = 4, width = 1.5)
+```
+
+
+```{r}
+fig1 <- summary_df |>
+  ggplot2::ggplot() +
+  ggplot2::aes(
+    x = Week, y = Mean, color = Sex, group = Sex
+  ) +
+  ggplot2::geom_point() +
+  ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD)) +
+  ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
+  ggplot2::facet_wrap(~Treatment) +
+  ggplot2::theme_bw()
+
+# lemon::gtable_show_names(fig1)
+lemon::reposition_legend(fig1, position = 'center', panel = "panel-3-2")
+
+# ggpubr::ggboxplot(
+#   weights_complete, x = "Week", y = "Weights",
+#     facet.by = "Treatment", color = "Sex"
+# )
+```
+
+
+```{r}
+summary_df |>
+  ggplot2::ggplot() +
+  ggplot2::aes(
+    x = Week, y = Mean, color = Treatment, group = Treatment
+  ) +
+  ggplot2::geom_point(position = ggplot2::position_dodge(width = 0.5)) +
+  ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD),
+                         position = ggplot2::position_dodge(width = 0.5)) +
+  ggplot2::geom_line(stat = "smooth", method = 'loess', alpha = 0.5, linewidth = 1) +
+  ggplot2::facet_wrap(~Sex) +
+  ggplot2::guides(color = ggplot2::guide_legend(nrow = 2)) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(legend.position = "bottom")
+
+# ggpubr::ggboxplot(
+#     weights_complete, x = "Week", y = "Weights",
+#     color = "Treatment", facet.by = "Sex"
+# )
+```
