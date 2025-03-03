@@ -4,7 +4,7 @@ output:
   bookdown::word_document2:
     number_section: false
     reference_docx: docx_landscape.docx
-date: "2025-01-09"
+date: "2025-02-28"
 editor_options: 
   chunk_output_type: console
 ---
@@ -16,6 +16,7 @@ pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
                flextable, rstatix, ggpubr, mar4.0)
 knitr::opts_chunk$set(fig.width=14, fig.height=8)
 fig_n = 0
+tab_n = 0
 ```
 
 ```{r}
@@ -122,7 +123,8 @@ summary_tbls <- function(
 ```{r}
 # Ensure PND is a factor with reference level set to "4"
 usv <- usv |>
-  mutate(PND = factor(PND, levels = unique(PND)), PND = relevel(PND, ref = "4"))
+  mutate(PND = factor(PND, levels = unique(PND)), PND = relevel(PND, ref = "4")) |>
+  mutate(Slope = ifelse(Slope>=-1000,Slope,NA))
 
 # Variables to analyze, including Count
 vars <- names(usv)[11:15] 
@@ -163,7 +165,8 @@ for (i in seq_along(vars)) {
     dv = !!sym(var), 
     wid = Animal, 
     between = c(Treatment), 
-    within = PND, 
+    within = PND,
+    covariate = Sex,
     data = usv_fct_compete, 
     type = 3
   )
@@ -207,7 +210,7 @@ We are going to run the analysis use R-package structure within github. R 4.4.1 
 
 # Data Processing
 
-The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. 
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Within the data, the "Slope" in one observation is set to be ignored because its extreme value (~= -2000).
 
 The interested variables at USVs data are: `r paste(vars, collapse = ", ")`.
 
@@ -217,116 +220,113 @@ The all interested variables were summarized by Treatment group overall, stratif
 
 ```{r summary-tbl, results='asis'}
 for (i in seq_along(vars)) {
-  # Generate the list of gtsummary tables
   summary_list <- summary_tbls(usv, vars[i])
-
-  # Use Map() to ensure vars[i] correctly maps to each table
-  Map(function(tbl, var_name) {
+  
+  purrr::walk2(summary_list, vars[i], function(tbl, var_name) {
     tbl |>
       gtsummary::as_flex_table() |>
-      flextable::set_caption(
-        caption = flextable::as_paragraph(
-          "Summary of ", 
-          flextable::as_chunk(var_name, props = officer::fp_text(bold = TRUE)),  # Bold the variable name
-          " by Treatment Groups with Time Stratification (4, 8, and 12th week)."
-        )
-      ) |>
       flextable::width(width = 1.15) |>
       flextable::width(j = 1, width = 1.16) |>
       flextable::flextable_to_rmd()
-  }, summary_list, vars[i])
+    
+    tab_n <<- tab_n + 1  
+    cat(paste0("\nTable ", tab_n, 
+               ": Summary of ", 
+               as.character(flextable::as_chunk(var_name, props = officer::fp_text(bold = TRUE))), 
+               " by Treatment Groups with Time Stratification (4, 8, and 12th week).\n\n"))
+  })
 }
 
 ```
 
 # Model Results
 
-The relationship between treatment groups and variables of interest was assessed using repeated ANOVA (or logistic regression), incorporating an individual level random effect.
+To evaluate differences in mean USV measures between treatments over time, we conducted repeated measures ANOVA (or logistic regression for a cross-sectional categorical USV measure), incorporating animals as a random effect.
 
-The regression fitting process followed these steps:
+We fitted 2 models as follows in order: 
 
-- Fit the 3-way interaction: Begin with a model including all three-way interactions.
+- Fit the 3-way interaction ANOVA model: Begin with a 3-way interaction model with the main effects of time, treatment (trt), and sex, their 2-way interactions and the three-way interaction of all three variables. This model assumes sex as an effect modifier. 
 
-- If the 3-way interaction term from the ANOVA table is not statistically significant, we move to the model with two-way interactions (without sex variable).
+- If the 3-way interaction term in ANOVA is not statistically significant (i.e, if sex is not an effect modifier), we drop the 3-way interaction term and fit the 2-way interaction model that assumes sex as a confounding variable. 
 
-At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
+At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report’s delivery format.
 
 ## ANOVA Table
 
-Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models, and below is the explanation of each model:
+Type III ANOVA table (Table \@ref(tab:anova-tb)) displays the anova p-values for each variable in each model, and below is the explanation of each model:
 
-Three interaction model show the p-value on three way interaction y = time(PND) * trt * sex
+- Three interaction model shows the p-value on three way interaction: y = time(PND) * trt * sex
 
-Two-way interaction model exclude sex show the p-value on two-way interaction y = time(PND) * trt
+- Two-way interaction model shows the p-value without the three way intereaction: y = time(PND) * trt + Sex + time(PND) : Sex
 
-The models also accounts for within-subjects effect by animal individual level, and all p-values are calculated throught Type-III ANOVA Test, using "rstatix" package.
+The models also account for within-subjects variation attributed to animals (i.e, inter-animal variability within the same treatment group), and all p-values are calculated through Type-III sum of squares of residuals, using the R “rstatix” package.
 
-Additionally, we use boxplots for intuitive visualizations that each pair of groups within the same time period are tested by t-test with a combination of Bonferroni p-value adjust method (more * means more significiance of the pair-wised t-test).
+Additionally, we use boxplots for intuitive visualizations for cross-sectional pairwise group comparisons at each time point tested by t-test with a combination of Bonferroni adjustment method (more * means more significance of the pairwise t-test).
 
 ```{r anova-tb, results='asis'}
+set_flextable_defaults(
+  font.family = "Arial",  # Optional: Set default font
+  font.size = 10,         # Optional: Set default font size
+  theme_fun = theme_vanilla # Optional: Set default theme
+)
 
 for (i in seq_along(vars)) {
   # Create flextable summary table
-  summary_table <- merged_summary_list[[i]] |>
-    as.data.frame() |>
-    tibble::rownames_to_column("Variable") |>
-    flextable::flextable() 
-
-  # Fix caption formatting issues for Word output
-  if (knitr::opts_knit$get("rmarkdown.pandoc.to") == "docx") {
-    summary_table <- summary_table |>
-      flextable::set_caption(
-        caption = paste0("Model Estimation Result - ", vars[i])
-      ) |>
-      flextable::set_table_properties(layout = "autofit")
-  } else {
-    summary_table <- summary_table |>
-      flextable::set_caption(
-        caption = paste0("Model Estimation Result - ", vars[i])
-      )
-  }
-
-  # Ensure correct rendering in RMarkdown for Word
-  cat(flextable::flextable_to_rmd(summary_table), "\n")
-
+  merged_summary_list[[i]] |>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Model Estimation Result - ", vars[i] ,"\n\n"))
+  
   # Print the boxplot
   print(boxplot_list[[i]])
 
   # Another page break before the next iteration
   fig_n = fig_n + 1
-  cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n"))
-  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
-}
+  cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n\n"))
 
-```
-
-
-
-```{r results='asis' , eval=FALSE}
-# Put here for backup, if don't need later, should be deleted.
-
-## Estimation Table
-# The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
-
-# Loop to generate flextables
-for (i in 1:length(vars)) {
-  merged_summary_list[[i]] |>
+  
+  DescTools::DunnettTest(x = usv[!is.na(usv[vars[i]]),vars[i]] |> unlist(),g = usv$Treatment[!is.na(usv[vars[i]])]|> unlist())$`Adjuvant+Saline` |>
     as.data.frame() |>
-    tibble::rownames_to_column("Variable") |>
+    rownames_to_column("Comparison") |>
+    mutate(
+      Effect_Size = round(diff, 3),  # Round effect size to 3 decimals
+      Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),  # Round CI
+      P_Value = formatC(round(pval, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
+    ) |>
+    select(
+      Group_Comparison = Comparison,  
+      Effect_Size,                    
+      Confidence_Interval,            
+      P_Value                         
+    ) |>
     flextable::flextable() |>
-    flextable::set_caption(
-      caption = paste0(
-        "Model Estimation Result in the Model - ", vars[i]
-      )
-    ) |>
-    flextable::width(
-      width = 1.15
-    ) |>
-    flextable::width(
-      j = 1,
-      width = 1.5
-    ) |>
+    flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
-
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Dunnett's test for comparing several treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+  
+  TukeyHSD(aov(as.formula(paste0("`", vars[i], "` ~ Treatment")), data = usv|>filter(Treatment!="Adjuvant+Saline")))$Treatment |>
+    as.data.frame() |>
+    rownames_to_column("Comparison") |>
+    mutate(
+      Effect_Size = round(diff, 3),  
+      Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),  # Round CI
+      P_Value = formatC(round(`p adj`, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
+    ) |>
+    select(
+      Group_Comparison = Comparison, 
+      Effect_Size,                  
+      Confidence_Interval,           
+      P_Value                         
+    ) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Tukey multiple comparisons of means 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
 ```
