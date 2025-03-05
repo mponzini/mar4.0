@@ -120,14 +120,15 @@ summary_tbls <- function(
 data = milestones |>
   mutate(Startle = ifelse(Startle=="N",0,1),
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
-         PND = relevel(factor(PND), ref = "4"))
-
-
+         PND = relevel(factor(PND), ref = "4"),
+         `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0),
+         `Negative Geotaxis 30s` = ifelse(`Negative Geotaxis`<30,1,0),
+         `Cliff Avoidance 30s` = ifelse(`Cliff Avoidance`<30,1,0))
 
 # Variables to analyze, including Count
-vars = names(data)[11:20]
+vars = names(data)[11:23]
 vars_numeric = 1:8
-vars_binary = 9
+vars_binary = c(9,11,12,13)
 
 # Create ANOVA results table
 merged_summary_list <- list()
@@ -210,11 +211,6 @@ for (i in vars_numeric) {
       caption = get_pwc_label(pwc)
     )
 }
-
-
-
-
-
 
 ```
 
