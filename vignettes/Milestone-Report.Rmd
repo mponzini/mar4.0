@@ -121,9 +121,13 @@ data = milestones |>
   mutate(Startle = ifelse(Startle=="N",0,1),
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
          PND = relevel(factor(PND), ref = "4"),
+<<<<<<< HEAD
          `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0),
          `Negative Geotaxis 30s` = ifelse(`Negative Geotaxis`<30,1,0),
          `Cliff Avoidance 30s` = ifelse(`Cliff Avoidance`<30,1,0))
+=======
+         `Righting Reflex` = log2(`Righting Reflex`))
+>>>>>>> 55947cc3b2ba30fb08bb9e2452c2546479b09ef7
 
 # Variables to analyze, including Count
 vars = names(data)[11:23]
