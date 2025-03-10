@@ -1,4 +1,5 @@
 # https://www.datanovia.com/en/lessons/mixed-anova-in-r/#two-way-mixed
+library(mar4.0)
 
 # update summary statistics Tx*Sex*PND
 # Example using Count, repeat for each Outcome measurement
