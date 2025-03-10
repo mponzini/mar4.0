@@ -19,9 +19,258 @@ fig_n = 0
 tab_n = 0
 ```
 
+
+
+```{r}
+prop_ci <- function(x1, n1, x2, n2, conf.level = 0.95) {
+  prop_diff <- (x1 / n1) - (x2 / n2)
+  se_diff <- sqrt((x1 / n1) * (1 - (x1 / n1)) / n1 + (x2 / n2) * (1 - (x2 / n2)) / n2)
+  z_score <- qnorm(1 - (1 - conf.level) / 2)
+  lower <- round(prop_diff - z_score * se_diff, 3)
+  upper <- round(prop_diff + z_score * se_diff, 3)
+  ci <- paste0("[", lower, ", ", upper, "]")
+  return(ci)
+}
+run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline") {
+  results_list <- list()
+  
+  for (pnd in unique(data$PND)) {
+    subset_data <- data %>%
+      filter(!is.na(PND), PND == pnd, !is.na(.data[[var]])) %>%
+      mutate(across(c(PND, Treatment, Animal), as.factor),
+             Treatment = factor(Treatment, levels = unique(Treatment)))
+    
+    if (!(control_group %in% unique(subset_data$Treatment))) next
+    
+    contingency_table <- table(subset_data$Treatment, subset_data[[var]])
+    
+    # **Skip the iteration if all groups have the same outcome (only one column in contingency table)**
+    if (ncol(contingency_table) == 1) next  
+    
+    p_values <- c()
+    comparisons <- c()
+    prop_differences <- c()
+    ci_values <- c()
+    
+    treatment_groups <- setdiff(rownames(contingency_table), control_group)
+    
+    for (treatment in treatment_groups) {
+      test_table <- contingency_table[c(control_group, treatment), , drop = FALSE]
+      test_result <- if (any(test_table < 5)) fisher.test(test_table) else chisq.test(test_table)
+      
+      # Calculate proportions
+      x1 <- test_table[1, 2]  # Count of success in control group
+      n1 <- sum(test_table[1, ])  # Total in control group
+      x2 <- test_table[2, 2]  # Count of success in treatment group
+      n2 <- sum(test_table[2, ])  # Total in treatment group
+      prop_diff <- round((x2 / n2) - (x1 / n1), 3)  # Treatment - Control
+      ci_diff <- prop_ci(x2, n2, x1, n1)
+      
+      p_values <- c(p_values, test_result$p.value)
+      comparisons <- c(comparisons, paste(treatment, "vs", control_group))
+      prop_differences <- c(prop_differences, as.character(prop_diff))
+      ci_values <- c(ci_values, as.character(ci_diff))
+    }
+    
+    adjusted_p_values <- p.adjust(p_values, method = "holm")
+    
+    baseline_result <- data.frame(
+      PND = as.character(pnd),
+      Group_Comparison = comparisons,
+      Proportion_Difference = prop_differences,
+      Confidence_Interval = ci_values,
+      P_Value = ifelse(adjusted_p_values < 0.05,
+                       paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"), 
+                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+    )
+    
+    results_list[[as.character(pnd)]] <- baseline_result
+  }
+  
+  final_results <- bind_rows(results_list)
+  if (nrow(final_results) > 0) {
+    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+  } else {
+    return("No valid comparisons due to lack of data.")
+  }
+}
+run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline") {
+  results_list <- list()
+  
+  for (pnd in unique(data$PND)) {
+    subset_data <-  data %>%
+      filter(!is.na(PND), PND == pnd, Treatment != control_group, !is.na(.data[[var]])) %>%
+      mutate(across(c(PND, Treatment, Animal), as.factor),
+             Treatment = factor(Treatment, levels = unique(Treatment)))
+    
+    if (length(unique(subset_data$Treatment)) <= 1) next
+    
+    contingency_table <- table(subset_data$Treatment, subset_data[[var]])
+    
+    # **Skip the iteration if all groups have the same outcome (only one column in contingency table)**
+    if (ncol(contingency_table) == 1) next  
+    
+    p_values <- c()
+    comparisons <- c()
+    prop_differences <- c()
+    ci_values <- c()
+    
+    treatment_groups <- rownames(contingency_table)
+    
+    for (i in 1:(length(treatment_groups) - 1)) {
+      for (j in (i + 1):length(treatment_groups)) {
+        test_table <- contingency_table[c(treatment_groups[i], treatment_groups[j]), , drop = FALSE]
+        test_result <- if (any(test_table < 5)) fisher.test(test_table) else chisq.test(test_table)
+        
+        # Calculate proportions
+        x1 <- test_table[1, 2]  # Count of success in group 1
+        n1 <- sum(test_table[1, ])  # Total count in group 1
+        x2 <- test_table[2, 2]  # Count of success in group 2
+        n2 <- sum(test_table[2, ])  # Total count in group 2
+        prop_diff <- round((x1 / n1) - (x2 / n2), 3)
+        ci_diff <- prop_ci(x1, n1, x2, n2)
+        
+        p_values <- c(p_values, test_result$p.value)
+        comparisons <- c(comparisons, paste(treatment_groups[i], "vs", treatment_groups[j]))
+        prop_differences <- c(prop_differences, as.character(prop_diff))  # Convert to character
+        ci_values <- c(ci_values, as.character(ci_diff))  # Convert to character
+      }
+    }
+    
+    adjusted_p_values <- p.adjust(p_values, method = "holm")
+    
+    treatment_result <- data.frame(
+      PND = as.character(pnd),
+      Group_Comparison = comparisons,
+      Proportion_Difference = prop_differences,
+      Confidence_Interval = ci_values,
+      P_Value = ifelse(adjusted_p_values < 0.05,
+                       paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"), 
+                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+    )
+    
+    results_list[[as.character(pnd)]] <- treatment_result
+  }
+  
+  final_results <- bind_rows(results_list)
+  if (nrow(final_results) > 0) {
+    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+  } else {
+    return("No valid comparisons due to lack of data.")
+  }
+}
+run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline") {
+  
+  data <- data %>%
+    mutate(across(c(PND, Treatment, Animal), as.factor))
+  
+  final_results_list <- list()
+  
+  for (var in vars) {
+    
+    results_list <- list()
+    
+    for (pnd in unique(data$PND)) {
+      
+      subset_data <- data %>%
+        filter(PND == pnd & !is.na(.[[var]]))
+      
+      if (length(unique(subset_data$Treatment)) > 1) {
+        dunnett_raw <- DescTools::DunnettTest(
+          x = subset_data[[var]] |> unlist(),
+          g = subset_data$Treatment |> unlist()
+        )[[control_group]] |> 
+          as.data.frame() |> 
+          rownames_to_column("Comparison")
+        
+        adjusted_p_values <- p.adjust(dunnett_raw$pval, method = "bonferroni") 
+        
+        dunnett_result <- dunnett_raw |> 
+          mutate(
+            Variable = var,
+            PND = as.character(pnd),
+            Effect_Size = round(diff, 3),
+            Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),
+            P_Value = ifelse(adjusted_p_values < 0.05,  
+                             paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"), 
+                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+          ) |> 
+          select(Variable, PND, Group_Comparison = Comparison, Effect_Size, Confidence_Interval, P_Value)
+        
+        results_list[[as.character(pnd)]] <- dunnett_result
+      }
+    }
+    
+    if (length(results_list) > 0) {
+      final_results_list[[var]] <- bind_rows(results_list)
+    }
+  }
+  
+  final_results <- bind_rows(final_results_list, .id = "Variable")
+
+  if (nrow(final_results) > 0) {
+    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+  } else {
+    return("No valid comparisons due to lack of data.")
+  }
+}
+run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Saline") {
+  
+  data <- data %>%
+    mutate(across(c(PND, Treatment, Animal), as.factor))
+  
+  final_results_list <- list()
+  
+  for (var in vars) {
+    
+    results_list <- list()
+    
+    for (pnd in unique(data$PND)) {
+      
+      subset_data <- data %>%
+        filter(PND == pnd & Treatment != exclude_control & !is.na(.[[var]]))
+      
+      if (length(unique(subset_data$Treatment)) > 1) {
+        
+        tukey_raw <- TukeyHSD(aov(as.formula(paste0("`", var, "` ~ Treatment")), data = subset_data))$Treatment |> 
+          as.data.frame() |> 
+          rownames_to_column("Comparison")
+        
+        adjusted_p_values <- p.adjust(tukey_raw$`p adj`, method = "bonferroni")
+        
+        tukey_result <- tukey_raw |> 
+          mutate(
+            Variable = var,
+            PND = as.character(pnd),
+            Effect_Size = round(diff, 3),
+            Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),
+            P_Value = ifelse(adjusted_p_values < 0.05,  
+                             paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"), 
+                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+          ) |> 
+          select(Variable, PND, Group_Comparison = Comparison, Effect_Size, Confidence_Interval, P_Value)
+        
+        results_list[[as.character(pnd)]] <- tukey_result
+      }
+    }
+    
+    if (length(results_list) > 0) {
+      final_results_list[[var]] <- bind_rows(results_list)
+    }
+  }
+  
+  final_results <- bind_rows(final_results_list, .id = "Variable")
+  
+  if (nrow(final_results) > 0) {
+    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+  } else {
+    return("No valid comparisons due to lack of data.")
+  }
+}
+```
+
 ```{r}
 ###################### Functions to generate the table and models
-
 
 # Loop through each variable
 fit_model <- function(var, formula_str, data, model_type = "lmer") {
@@ -80,7 +329,7 @@ summary_tbls <- function(
           statistic = gtsummary::all_continuous2() ~ c(
             "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
           ) 
-        ) |> gtsummary::add_overall(),,
+        ) |> gtsummary::add_overall(),
       .combine_with = "tbl_stack"
     ) |>
     gtsummary::modify_spanning_header(
@@ -116,27 +365,29 @@ summary_tbls <- function(
 ```
 
 ```{r}
+###################### Run the model and create plot for numeric variables
+
 # Ensure PND is a factor with reference level set to "4"
 data = milestones |>
   mutate(Startle = ifelse(Startle=="N",0,1),
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
          PND = relevel(factor(PND), ref = "4"),
-<<<<<<< HEAD
-         `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0),
-         `Negative Geotaxis 30s` = ifelse(`Negative Geotaxis`<30,1,0),
-         `Cliff Avoidance 30s` = ifelse(`Cliff Avoidance`<30,1,0))
-=======
-         `Righting Reflex` = log2(`Righting Reflex`))
->>>>>>> 55947cc3b2ba30fb08bb9e2452c2546479b09ef7
+         `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0) |> as.factor(),
+         `Negative Geotaxis 30s` = ifelse(`Negative Geotaxis`<30,1,0)|> as.factor(),
+         `Cliff Avoidance 30s` = ifelse(`Cliff Avoidance`<30,1,0)|> as.factor(),
+         `Log2 Righting Reflex` = log2(`Righting Reflex`))
+
 
 # Variables to analyze, including Count
-vars = names(data)[11:23]
-vars_numeric = 1:8
+vars = names(data)[11:24]
+vars_numeric = c(1:8,14)
 vars_binary = c(9,11,12,13)
 
 # Create ANOVA results table
 merged_summary_list <- list()
-boxplot_list <- list()
+plot_list <- list()
+post_hoc_h1_list <- list()
+post_hoc_h2_list <- list()
 
 # Main loop over variables
 for (i in vars_numeric) {
@@ -154,18 +405,6 @@ for (i in vars_numeric) {
       Animal = factor(`Animal ID`)
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
-
-  ###################################################################
-  ## exclude extreme for `Righting Reflex`
-  data_fct_compete <- data_fct_compete |>
-    filter((`Righting Reflex` < 30 & PND == 4) | 
-             (`Righting Reflex` < 20 & PND == 8) |
-             (`Righting Reflex` < 5 & PND == 12)
-           ) 
-  # data_fct_compete |> filter(`Righting Reflex`>30)
-  # data_fct_compete |> filter(`Righting Reflex`>20 &  PND == 8)
-  # data_fct_compete |> filter(`Righting Reflex`>5 &  PND == 12)
-  ###################################################################
   
   # Perform 3-way ANOVA (Treatment * Sex * PND)
   mix_aov_3way <- rstatix::anova_test(
@@ -188,71 +427,119 @@ for (i in vars_numeric) {
     type = 3
   )
 
-  # Extract p-values from ANOVA tests
-  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)  # Adjust indices based on output structure
-  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p) # Adjust indices based on output structure
-
+  # Extract p-values from ANOVA tests and merge them into one table
+  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)  
+  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p) 
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
   
-  # Store results in list format for further use
-  merged_summary_list[[var]] <- combined_anova_results
+  ######## Store results in list format for further use
+  merged_summary_list[[i]] <- combined_anova_results
   
-  # Perform T-test comparisons and merge the result into the boxplot (non-paired t-tests with Bonferroni correction)
-  pwc <- data_fct_compete %>%
-    group_by(PND) %>%
-    rstatix::pairwise_t_test(as.formula(paste0("`", var, "` ~ Treatment")), 
-                             paired = FALSE, p.adjust.method = "bonferroni") %>%
-    rstatix::add_xy_position(x = "PND")
-
+  ######## Create Boxplots for numeric variable
+  plot_list[[i]] <- ggboxplot(
+  data_fct_compete, x = "Treatment", y = var,
+  color = "Sex", fill = "Sex", palette = "Set1"
+) +
+  facet_wrap(~PND) +
+  theme_minimal() +
+  labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
+       x = "Treatment",
+       y = paste0(var, " Value")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
   
-  boxplot_list[[var]] <- ggpubr::ggboxplot(
-    data_fct_compete, x = "PND", y = var,
-    color = "Treatment", palette = "Sex"
-    ) +
-    stat_pvalue_manual(pwc, tip.length = 0, hide.ns = TRUE) +
-    labs(
-      subtitle = get_test_label(mix_aov_2way, detailed = TRUE),
-      caption = get_pwc_label(pwc)
-    )
+  ######## Running post-hoc test on continuous variable
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, vars = var)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, vars = var)
 }
-
 ```
 
 ```{r}
+###################### Run the model and create plot for binary variables
+
 merged_estimate_list = list()
 
-# Main loop
 for (i in vars_binary) {
   var <- vars[i]
-  model_type = "glmer"
-  
-  # Define formulas
-  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`*`Sex` ")
-  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` ")
-  
-  # Fit models
-  model1 <- glm(as.formula(formula1), data = data, family = binomial(link = "logit"))
-  model2 <- glm(as.formula(formula2), data = data, family = binomial(link = "logit"))
+  model_type = ifelse(i == 9, "glm","glmer")
 
-  # Summarize and format results
-  coef_indices <- if (model_type == "glmer") c(1, 2, 4) else c(1, 2, 5)
-  summary1 <- format_summary(summary(model1), coef_indices, "Two Vars Model") |> tibble::rownames_to_column()
-  names(summary1) <- c("Effect", names(summary1)[2])
-  summary2 <- format_summary(summary(model2), coef_indices, "Main Effect Model")|> tibble::rownames_to_column()
-  names(summary2) <- c("Effect", names(summary2)[2])
-  merged_estimate <- create_combined_estimate(summary_full = summary1, summary2)
-  merged_estimate_list[[i]] <- merged_estimate
+  if (model_type == "glm"){
+    # Fit models
+    formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`*`Sex` ")
+    formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` ")
+    model1 <- glm(as.formula(formula1), data = data, family = binomial(link = "logit"))
+    model2 <- glm(as.formula(formula2), data = data, family = binomial(link = "logit"))
+    
+    # Summarize and format results
+    coef_indices <- if (model_type == "glm") c(1, 2, 4) else c(1, 2, 5)
+    summary1 <- format_summary(summary(model1), coef_indices, "Two Vars Model") |> tibble::rownames_to_column()
+    names(summary1) <- c("Effect", names(summary1)[2])
+    summary2 <- format_summary(summary(model2), coef_indices, "Main Effect Model")|> tibble::rownames_to_column()
+    names(summary2) <- c("Effect", names(summary2)[2])
+    merged_estimate <- create_combined_estimate(summary_full = summary1, summary2)
+    merged_estimate_list[[i]] <- merged_estimate
+    
+    # Perform ANOVA
+    anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_1 = anova_result_1[,c(1,4)]
+    names(anova_result_1) <- c("Effect", "Two Vars Model")
+    anova_result_2 = Anova(model2, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_2 = anova_result_2[,c(1,4)]
+    names(anova_result_2) <- c("Effect", "Main Effect Model")
+    combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
+    merged_summary_list[[i]] <- combined_anova_results
+  } else {
+    formula1 <-  paste0("`", var, "` ~ `Treatment` * Sex * `PND` + (1|`Animal ID`)")
+    formula2 <-  paste0("`", var, "` ~ `Treatment` + Sex + PND + `Treatment`:PND + Sex:PND + (1|`Animal ID`)")
+    model1 <- glmer(as.formula(formula1), data = data, family = binomial(link = "logit"),
+                    control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
+    model2 <- glmer(as.formula(formula2), data = data, family = binomial(link = "logit"),
+                    control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
+    anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_1 = anova_result_1[,c(1,4)]
+    names(anova_result_1) <- c("Effect", "Two Vars Model")
+    anova_result_2 = Anova(model2, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_2 = anova_result_2[,c(1,4)]
+    names(anova_result_2) <- c("Effect", "Two Vars Model")
+    combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
+    merged_summary_list[[i]] <- combined_anova_results
+  }
+
+  # Create and store bar plot
+  plot_summary <- data |> 
+    select(Treatment, PND, Sex, !!sym(var)) |> 
+    mutate(Treatment = as.factor(Treatment),
+           Sex = as.factor(Sex),
+           PND = as.factor(PND),
+           !!sym(var) :=  ifelse(!!sym(var) == 1,1,0)) |>
+    filter(!is.na(!!sym(var))) |> 
+    group_by(Treatment, Sex, PND) |> 
+    summarise(Proportion_Yes = mean(!!sym(var)), .groups = "drop")
+
+  plot_list[[i]] <- ggplot(plot_summary, aes(x = Treatment, y = Proportion_Yes, fill = Sex, color = Sex)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~PND) +
+  scale_fill_brewer(palette = "Set1") +  
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal() +
+  labs(title = paste0("Proportion of 'Yes' in ", var, " by Treatment & Sex"),
+       x = "Treatment",
+       y = paste0(var, " Value")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        panel.grid.major = element_line(color = "gray85"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(), 
+        strip.text = element_text(face = "bold")) 
   
-  # Perform ANOVA
-  anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
-  anova_result_1 = anova_result_1[,c(1,4)]
-  names(anova_result_1) <- c("Effect", "Two Vars Model")
-  anova_result_2 = Anova(model2, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
-  anova_result_2 = anova_result_2[,c(1,4)]
-  names(anova_result_2) <- c("Effect", "Main Effect Model")
-  combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
-  merged_summary_list[[i]] <- combined_anova_results[2:4,]
+  post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, var = var)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
 }
+
+
+
+
+
 ```
 
 
@@ -266,6 +553,8 @@ We are going to run the analysis use R-package structure within github. R 4.4.1 
 
 The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Finally, the `Startle` and `Forelimb Grasp` variables were converted to binary for analysis.
 
+We also dichotomized three variables (`Circle Traverse`, `Negative Geotaxis`, and `Cliff Avoidance`) to if the animal achieved the milestone within 30 seconds, and those three variables are evaluated in both numeric and binary variable version.
+
 The interested variables at milestones data are: `r paste(vars, collapse = ", ")`.
 
 # Summary statistics
@@ -274,7 +563,7 @@ The all interested variables were summarized by Treatment group overall, stratif
 
 ```{r summary-tbl, results='asis'}
 for (i in seq_along(vars)) {
-  summary_list <- summary_tbls(milestones, vars[i])
+  summary_list <- summary_tbls(data, vars[i])
   
   purrr::walk2(summary_list, vars[i], function(tbl, var_name) {
     tbl |>
@@ -302,7 +591,7 @@ We fitted 2 models as follows in order:
 
 - If the 3-way interaction term in ANOVA is not statistically significant (i.e, if sex is not an effect modifier), we drop the 3-way interaction term and fit the 2-way interaction model that assumes sex as a confounding variable. 
 
-Additionally, for binary outcomes (Startle), we use logistic regression to evaluate the effect on the 12th week, this is because no animal has Startle at the 4th and 8th week (this is non-repeated measure). Forelimb Grasp is no evaluated because no animal has Startle at any time point.
+Additionally, for binary outcomes (Startle), we use ordinary logistic regression to evaluate the effect on the 12th week, this is because no animal has Startle at the 4th and 8th week (this is non-repeated measure). Forelimb Grasp is no evaluated because no animal has Startle at any time point.
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report’s delivery format.
 
@@ -328,8 +617,11 @@ Additionally, we use boxplots for intuitive visualizations for cross-sectional p
 
 - *Some Righting Reflex are excluded (n = 4): At PND 4, 9_42_2 has 55.8, at PND 8, 9_42_7 has 27.4, and at PND 12, 9_15_8 and 9_45_1 have 6.06 and 5.95.*
 
-```{r anova-tb, results='asis'}
+## Post-hoc Tests
 
+Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two set of post-hoc tests for each of variable. The first set is all comparison between the control group and each treatment group, and the second set is across all treatment group. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
+
+```{r anova-tb, results='asis'}
 set_flextable_defaults(
   font.family = "Arial",  # Optional: Set default font
   font.size = 10,         # Optional: Set default font size
@@ -344,59 +636,25 @@ for (i in c(vars_numeric,vars_binary)) {
     flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
   tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Model Estimation Result - ", vars[i] ,"\n\n"))
+  cat(paste0("\nTable ",tab_n, ": Model Estimation ANOVA Result - ", vars[i] ,"\n\n"))
   
-  if (!(i %in% vars_binary)){
-    # Print the boxplot
-    print(boxplot_list[[i]])
+  print(plot_list[[i]])
+  fig_n = fig_n + 1
+  cat(paste0("\nFigure ",fig_n, ": Summary Plot of Response Variable by Treatment, Time, and Sex\n\n"))
   
-    # Another page break before the next iteration
-    fig_n = fig_n + 1
-    cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n\n"))
-  
-    
-    # DescTools::DunnettTest(x = milestones[!is.na(milestones[vars[i]]),vars[i]] |> unlist(),g = milestones$Treatment[!is.na(milestones[vars[i]])]|> unlist())$`Adjuvant+Saline` |>
-    #   as.data.frame() |>
-    #   rownames_to_column("Comparison") |>
-    #   mutate(
-    #     Effect_Size = round(diff, 3),  # Round effect size to 3 decimals
-    #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),  # Round CI
-    #     P_Value = formatC(round(pval, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-    #   ) |>
-    #   select(
-    #     Group_Comparison = Comparison,  
-    #     Effect_Size,                    
-    #     Confidence_Interval,            
-    #     P_Value                         
-    #   ) |>
-    #   flextable::flextable() |>
-    #   flextable::set_table_properties(layout = "autofit") |>
-    #   flextable::flextable_to_rmd()
-    # tab_n = tab_n + 1
-    # cat(paste0("\nTable ",tab_n, ": Dunnett's test for comparing several treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
-    # 
-    # TukeyHSD(aov(as.formula(paste0("`", vars[i], "` ~ Treatment")), data = milestones|>filter(Treatment!="Adjuvant+Saline")))$Treatment |>
-    #   as.data.frame() |>
-    #   rownames_to_column("Comparison") |>
-    #   mutate(
-    #     Effect_Size = round(diff, 3),  
-    #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),  # Round CI
-    #     P_Value = formatC(round(`p adj`, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-    #   ) |>
-    #   select(
-    #     Group_Comparison = Comparison, 
-    #     Effect_Size,                  
-    #     Confidence_Interval,           
-    #     P_Value                         
-    #   ) |>
-    #   flextable::flextable() |>
-    #   flextable::set_table_properties(layout = "autofit") |>
-    #   flextable::flextable_to_rmd()
-    # tab_n = tab_n + 1
-    # cat(paste0("\nTable ",tab_n, ": Tukey multiple comparisons of means 95% family-wise confidence level - ", vars[i] ,"\n\n"))
-    # cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
-  }
+  post_hoc_h1_list[[i]]|>
+    flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing baseline group to treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+
+  post_hoc_h2_list[[i]]|>
+    flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+    cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
+
+
 
 ```
 
