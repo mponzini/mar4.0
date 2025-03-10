@@ -2,4 +2,7 @@
 
 export(exclude_cross_fostered)
 export(longitudinal_analysis)
-export(prop_ci)
+export(run_posthoc_test_cat_h1)
+export(run_posthoc_test_cat_h2)
+export(run_posthoc_test_num_h1)
+export(run_posthoc_test_num_h2)

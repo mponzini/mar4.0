@@ -1,15 +1,3 @@
-#' @title Posthoc Test Helper Function
-#'
-#' @param dataset Data frame of the data
-#' @param var Response variable
-#' @param control_group Level of the control group
-#'
-#' @returns Return the table of posthoc estimation table
-#'
-#' @export
-#'
-
-
 prop_ci <- function(x1, n1, x2, n2, conf.level = 0.95) {
   prop_diff <- (x1 / n1) - (x2 / n2)
   se_diff <- sqrt((x1 / n1) * (1 - (x1 / n1)) / n1 + (x2 / n2) * (1 - (x2 / n2)) / n2)
@@ -20,6 +8,16 @@ prop_ci <- function(x1, n1, x2, n2, conf.level = 0.95) {
   return(ci)
 }
 
+#' @title Posthoc Test Helper Function
+#'
+#' @param dataset Data frame of the data
+#' @param var Response variable
+#' @param control_group Level of the control group
+#'
+#' @returns Return the table of posthoc estimation table
+#'
+#' @export
+#'
 run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline") {
   results_list <- list()
 
@@ -83,6 +81,17 @@ run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline"
     return("No valid comparisons due to lack of data.")
   }
 }
+
+#' @title Posthoc Test Helper Function
+#'
+#' @param dataset Data frame of the data
+#' @param var Response variable
+#' @param control_group Level of the control group
+#'
+#' @returns Return the table of posthoc estimation table
+#'
+#' @export
+#'
 run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline") {
   results_list <- list()
 
@@ -149,6 +158,16 @@ run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline"
   }
 }
 
+#' @title Posthoc Test Helper Function
+#'
+#' @param dataset Data frame of the data
+#' @param var Response variable
+#' @param control_group Level of the control group
+#'
+#' @returns Return the table of posthoc estimation table
+#'
+#' @export
+#'
 run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline") {
 
   data <- data %>%
@@ -204,6 +223,17 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
     return("No valid comparisons due to lack of data.")
   }
 }
+
+#' @title Posthoc Test Helper Function
+#'
+#' @param dataset Data frame of the data
+#' @param var Response variable
+#' @param control_group Level of the control group
+#'
+#' @returns Return the table of posthoc estimation table
+#'
+#' @export
+#'
 run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Saline") {
 
   data <- data %>%
