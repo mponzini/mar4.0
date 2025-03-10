@@ -4,7 +4,7 @@ output:
   bookdown::word_document2:
     number_section: false
     reference_docx: docx_landscape.docx
-date: "2025-02-28"
+date: "2025-03-10"
 editor_options: 
   chunk_output_type: console
 ---
@@ -132,6 +132,8 @@ vars <- names(usv)[11:15]
 # Create ANOVA results table
 merged_summary_list <- list()
 boxplot_list <- list()
+post_hoc_h1_list <- list()
+post_hoc_h2_list <- list()
 
 # Main loop over variables
 for (i in seq_along(vars)) {
@@ -171,32 +173,30 @@ for (i in seq_along(vars)) {
     type = 3
   )
 
-  # Extract p-values from ANOVA tests
-  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)  # Adjust indices based on output structure
-  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p) # Adjust indices based on output structure
-
+    # Extract p-values from ANOVA tests and merge them into one table
+  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)
+  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p)
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
   
   # Store results in list format for further use
   merged_summary_list[[var]] <- combined_anova_results
   
-  # Perform T-test comparisons and merge the result into the boxplot (non-paired t-tests with Bonferroni correction)
-  pwc <- usv_fct_compete %>%
-    group_by(PND) %>%
-    rstatix::pairwise_t_test(as.formula(paste0("`", var, "` ~ Treatment")), 
-                             paired = FALSE, p.adjust.method = "bonferroni") %>%
-    rstatix::add_xy_position(x = "PND")
-
+  ######## Create Boxplots for numeric variable
+  boxplot_list[[var]] <- ggboxplot(
+    usv_fct_compete, x = "Treatment", y = var,
+    color = "Sex", fill = "Sex", palette = "Set1"
+  ) +
+    facet_wrap(~PND) +
+    theme_minimal() +
+    labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
+         x = "Treatment",
+         y = paste0(var, " Value")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom")
   
-  boxplot_list[[var]] <- ggpubr::ggboxplot(
-    usv_fct_compete, x = "PND", y = var,
-    color = "Treatment", palette = "Sex"
-    ) +
-    stat_pvalue_manual(pwc, tip.length = 0, hide.ns = TRUE) +
-    labs(
-      subtitle = get_test_label(mix_aov_2way, detailed = TRUE),
-      caption = get_pwc_label(pwc)
-    )
+  ######## Running post-hoc test on continuous variable
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
 }
 
 ```
@@ -263,6 +263,12 @@ The models also account for within-subjects variation attributed to animals (i.e
 
 Additionally, we use boxplots for intuitive visualizations for cross-sectional pairwise group comparisons at each time point tested by t-test with a combination of Bonferroni adjustment method (more * means more significance of the pairwise t-test).
 
+
+## Post-hoc Tests
+
+Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two set of post-hoc tests for each of variable. The first set is all comparison between the control group and each treatment group, and the second set is across all treatment group. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
+
+
 ```{r anova-tb, results='asis'}
 set_flextable_defaults(
   font.family = "Arial",  # Optional: Set default font
@@ -287,45 +293,16 @@ for (i in seq_along(vars)) {
   fig_n = fig_n + 1
   cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n\n"))
 
-  # DescTools::DunnettTest(x = usv[!is.na(usv[vars[i]]),vars[i]] |> unlist(),g = usv$Treatment[!is.na(usv[vars[i]])]|> unlist())$`Adjuvant+Saline` |>
-  #   as.data.frame() |>
-  #   rownames_to_column("Comparison") |>
-  #   mutate(
-  #     Effect_Size = round(diff, 3),  # Round effect size to 3 decimals
-  #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),  # Round CI
-  #     P_Value = formatC(round(pval, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-  #   ) |>
-  #   select(
-  #     Group_Comparison = Comparison,  
-  #     Effect_Size,                    
-  #     Confidence_Interval,            
-  #     P_Value                         
-  #   ) |>
-  #   flextable::flextable() |>
-  #   flextable::set_table_properties(layout = "autofit") |>
-  #   flextable::flextable_to_rmd()
-  # tab_n = tab_n + 1
-  # cat(paste0("\nTable ",tab_n, ": Dunnett's test for comparing several treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
-  # 
-  # TukeyHSD(aov(as.formula(paste0("`", vars[i], "` ~ Treatment")), data = usv|>filter(Treatment!="Adjuvant+Saline")))$Treatment |>
-  #   as.data.frame() |>
-  #   rownames_to_column("Comparison") |>
-  #   mutate(
-  #     Effect_Size = round(diff, 3),  
-  #     Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),  # Round CI
-  #     P_Value = formatC(round(`p adj`, 3), format = "f", digits = 3)  # Round p-value and keep decimal format
-  #   ) |>
-  #   select(
-  #     Group_Comparison = Comparison, 
-  #     Effect_Size,                  
-  #     Confidence_Interval,           
-  #     P_Value                         
-  #   ) |>
-  #   flextable::flextable() |>
-  #   flextable::set_table_properties(layout = "autofit") |>
-  #   flextable::flextable_to_rmd()
-  # tab_n = tab_n + 1
-  # cat(paste0("\nTable ",tab_n, ": Tukey multiple comparisons of means 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  post_hoc_h1_list[[i]]|>
+    flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing baseline group to treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+
+  post_hoc_h2_list[[i]]|>
+    flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+    cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
   cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
 ```
