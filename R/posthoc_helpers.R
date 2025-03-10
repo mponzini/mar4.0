@@ -4,6 +4,8 @@
 #' @param var Response variable
 #' @param control_group Level of the control group
 #'
+#' @returns Return the table of posthoc estimation table
+#'
 #' @export
 #'
 
