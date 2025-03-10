@@ -1,3 +1,13 @@
+#' @title Posthoc Test Helper Function
+#'
+#' @param dataset Data frame of the data
+#' @param var Response variable
+#' @param control_group Level of the control group
+#'
+#' @export
+#'
+
+
 prop_ci <- function(x1, n1, x2, n2, conf.level = 0.95) {
   prop_diff <- (x1 / n1) - (x2 / n2)
   se_diff <- sqrt((x1 / n1) * (1 - (x1 / n1)) / n1 + (x2 / n2) * (1 - (x2 / n2)) / n2)
