@@ -2,3 +2,4 @@
 
 export(exclude_cross_fostered)
 export(longitudinal_analysis)
+export(prop_ci)
