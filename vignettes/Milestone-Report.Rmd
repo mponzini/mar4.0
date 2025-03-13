@@ -186,21 +186,43 @@ for (i in vars_numeric) {
   merged_summary_list[[i]] <- combined_anova_results
   
   ######## Create Boxplots for numeric variable
+  # Compute summary statistics (Mean & SE)
+  data_summary <- data_fct_compete %>%
+    group_by(Treatment, Sex, PND) %>%
+    summarise(
+      Mean = mean(.data[[var]], na.rm = TRUE),
+      SE = sd(.data[[var]], na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+
+  # Create the plot with SE
   plot_list[[i]] <- ggboxplot(
   data_fct_compete, x = "Treatment", y = var,
   color = "Sex", fill = "Sex", palette = "Set1"
 ) +
-  facet_wrap(~PND) +
+  geom_errorbar(data = data_summary, 
+                aes(x = Treatment, y = Mean, ymin = Mean - 2*SE, ymax = Mean + 2*SE, group = interaction(Treatment, Sex)),  
+                position = position_dodge(width = 0.8), 
+                width = 0.2, 
+                color = "black") +  
+  geom_point(data = data_summary, 
+             aes(x = Treatment, y = Mean, color = Sex, group = interaction(Treatment, Sex)), 
+             position = position_dodge(width = 0.8), 
+             size = 1, 
+             shape = 21) +  
+  facet_wrap(~PND, scales = "free_x", nrow = 1, labeller = label_both) +
   theme_minimal() +
   labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
        x = "Treatment",
        y = paste0(var, " Value")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "bottom")
-  
+        legend.position = "bottom",
+        strip.text = element_text(size = 12, face = "bold"))
+
+
   ######## Running post-hoc test on continuous variable
   post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, vars = var)
-  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, vars = var)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = data_fct_compete, vars = var)
 }
 ```
 
@@ -256,31 +278,43 @@ for (i in vars_binary) {
   }
 
   # Create and store bar plot
-  plot_summary <- data |> 
-    select(Treatment, PND, Sex, !!sym(var)) |> 
-    mutate(Treatment = as.factor(Treatment),
-           Sex = as.factor(Sex),
-           PND = as.factor(PND),
-           !!sym(var) :=  ifelse(!!sym(var) == 1,1,0)) |>
-    filter(!is.na(!!sym(var))) |> 
-    group_by(Treatment, Sex, PND) |> 
-    summarise(Proportion_Yes = mean(!!sym(var)), .groups = "drop")
+plot_summary <- data |> 
+  select(Treatment, PND, Sex, !!sym(var)) |> 
+  mutate(Treatment = as.factor(Treatment),
+         Sex = as.factor(Sex),
+         PND = as.factor(PND),
+         !!sym(var) := ifelse(!!sym(var) == 1, 1, 0)) |> 
+  filter(!is.na(!!sym(var))) |> 
+  group_by(Treatment, Sex, PND) |> 
+  summarise(
+    Proportion_Yes = mean(!!sym(var)),
+    n = n(),
+    SE = sqrt((Proportion_Yes * (1 - Proportion_Yes)) / n),  # Standard Error for Proportions
+    .groups = "drop"
+  ) |> 
+  mutate(
+    Lower = pmax(Proportion_Yes - 2 * SE, 0),  # Ensure lower bound is not negative
+    Upper = pmin(Proportion_Yes + 2 * SE, 1)   # Ensure upper bound does not exceed 1
+  )
 
-  plot_list[[i]] <- ggplot(plot_summary, aes(x = Treatment, y = Proportion_Yes, fill = Sex, color = Sex)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~PND) +
+# Create bar plot with 2SE error bars
+plot_list[[i]] <- ggplot(plot_summary, aes(x = Treatment, y = Proportion_Yes, fill = Sex, color = Sex)) +
+  geom_bar(stat = "identity", position = position_dodge(0.8)) + 
+  geom_errorbar(aes(ymin = Lower, ymax = Upper), color = "black",
+                position = position_dodge(0.8), width = 0.2) +  
+  facet_wrap(~PND,labeller = label_both) +
   scale_fill_brewer(palette = "Set1") +  
   scale_color_brewer(palette = "Set1") +
   theme_minimal() +
   labs(title = paste0("Proportion of 'Yes' in ", var, " by Treatment & Sex"),
        x = "Treatment",
-       y = paste0(var, " Value")) +
+       y = paste0(var, " Proportion")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "bottom",
         panel.grid.major = element_line(color = "gray85"),
         panel.grid.minor = element_blank(),
         strip.background = element_blank(), 
-        strip.text = element_text(face = "bold")) 
+        strip.text = element_text(face = "bold"))
   
   post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, var = var)
   post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
@@ -295,17 +329,19 @@ for (i in vars_binary) {
 
 # Background
 
-In MAR 4.0 project, this section we will wants to know analysis result on the milestone data. 
+In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
 
-We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+We are going to run the analysis using R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
 
 # Data Processing
 
-The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Finally, the `Startle` and `Forelimb Grasp` variables were converted to binary for analysis.
-
-We also dichotomized three variables (`Circle Traverse`, `Negative Geotaxis`, and `Cliff Avoidance`) to if the animal achieved the milestone within 30 seconds, and those three variables are evaluated in both numeric and binary variable version.
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with total observations of `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. 
 
 The interested variables at milestones data are: `r paste(vars, collapse = ", ")`.
+
+The `Startle` and `Forelimb Grasp` variables were converted to binary (yes/no of performance) for analysis.
+
+We also dichotomized three variables (`Circle Traverse`, `Negative Geotaxis`, and `Cliff Avoidance`) as if the animal achieved the milestone within 30 seconds. Those three variables are evaluated in both numeric and binary variable version.
 
 # Summary statistics
 
@@ -386,11 +422,16 @@ for (i in c(vars_numeric,vars_binary)) {
     flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
   tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Model Estimation ANOVA Result - ", vars[i] ,"\n\n"))
+  cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
   
   print(plot_list[[i]])
   fig_n = fig_n + 1
-  cat(paste0("\nFigure ",fig_n, ": Summary Plot of Response Variable by Treatment, Time, and Sex\n\n"))
+  if(i %in% vars_numeric){
+    cat(paste0("\nFigure ",fig_n, ": Boxplot showing the distribution of ", vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
+  } else{
+    cat(paste0("\nFigure ",fig_n, ": Barplot showing the distribution of ", vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
+  }
+
   
   post_hoc_h1_list[[i]]|>
     flextable::flextable_to_rmd()

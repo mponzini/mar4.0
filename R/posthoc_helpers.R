@@ -198,7 +198,7 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
           mutate(
             Variable = var,
             PND = as.character(pnd),
-            Effect_Size = round(diff, 3),
+            Mean_Difference = round(diff, 3),
             Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),
             P_Value = ifelse(adjusted_p_values < 0.05,
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
@@ -262,7 +262,7 @@ run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Sali
           mutate(
             Variable = var,
             PND = as.character(pnd),
-            Effect_Size = round(diff, 3),
+            Mean_Difference = round(diff, 3),
             Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),
             P_Value = ifelse(adjusted_p_values < 0.05,
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),

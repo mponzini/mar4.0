@@ -174,29 +174,49 @@ for (i in seq_along(vars)) {
   )
 
     # Extract p-values from ANOVA tests and merge them into one table
-  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)
-  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p)
+  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model; Sex as Effect Modifier)` = p)
+  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model; Sex as Confounder)` = p)
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
   
   # Store results in list format for further use
   merged_summary_list[[var]] <- combined_anova_results
   
   ######## Create Boxplots for numeric variable
-  boxplot_list[[var]] <- ggboxplot(
-    usv_fct_compete, x = "Treatment", y = var,
-    color = "Sex", fill = "Sex", palette = "Set1"
-  ) +
-    facet_wrap(~PND) +
-    theme_minimal() +
-    labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
-         x = "Treatment",
-         y = paste0(var, " Value")) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "bottom")
+  data_summary <- usv_fct_compete %>%
+    group_by(Treatment, Sex, PND) %>%
+    summarise(
+      Mean = mean(.data[[var]], na.rm = TRUE),
+      SE = sd(.data[[var]], na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+
+  # Create the plot with SE
+  boxplot_list[[i]] <- ggboxplot(
+  usv_fct_compete, x = "Treatment", y = var,
+  color = "Sex", fill = "Sex", palette = "Set1"
+) +
+  geom_errorbar(data = data_summary, 
+                aes(x = Treatment, y = Mean, ymin = Mean - 2*SE, ymax = Mean + 2*SE, group = interaction(Treatment, Sex)),  
+                position = position_dodge(width = 0.8), 
+                width = 0.2, 
+                color = "black") +  
+  geom_point(data = data_summary, 
+             aes(x = Treatment, y = Mean, color = Sex, group = interaction(Treatment, Sex)), 
+             position = position_dodge(width = 0.8), 
+             size = 1, 
+             shape = 21) +  
+  facet_wrap(~PND, scales = "free_x", nrow = 1, labeller = label_both) +
+  theme_minimal() +
+  labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
+       x = "Treatment",
+       y = paste0(var, " Value")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom",
+        strip.text = element_text(size = 12, face = "bold"))
   
   ######## Running post-hoc test on continuous variable
   post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
-  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = usv_fct_compete, vars = var)
 }
 
 ```
@@ -204,13 +224,14 @@ for (i in seq_along(vars)) {
 
 # Background
 
-In MAR 4.0 project, this section we will wants to know analysis result on the USV data. 
+In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
 
-We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+We are going to run the analysis using R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+
 
 # Data Processing
 
-The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a total observation `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Within the data, the "Slope" in one observation is set to be ignored because its extreme value (~= -2000).
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with total observations `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. Within the data, the "Slope" in one observation is set to be ignored because its extreme value (~= -2000).
 
 The interested variables at USVs data are: `r paste(vars, collapse = ", ")`.
 
@@ -266,7 +287,7 @@ Additionally, we use boxplots for intuitive visualizations for cross-sectional p
 
 ## Post-hoc Tests
 
-Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two set of post-hoc tests for each of variable. The first set is all comparison between the control group and each treatment group, and the second set is across all treatment group. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
+Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two sets of post-hoc tests for each variable. The first set is all comparisons between the control group and each treatment group, and the second set is pairwise comparisons across all treatment groups. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
 
 
 ```{r anova-tb, results='asis'}
@@ -284,19 +305,19 @@ for (i in seq_along(vars)) {
     flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
   tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Model Estimation Result - ", vars[i] ,"\n\n"))
+  cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
   
   # Print the boxplot
   print(boxplot_list[[i]])
 
   # Another page break before the next iteration
   fig_n = fig_n + 1
-  cat(paste0("\nFigure ",fig_n, ": Boxplot of Response Variable by Treatment, Time, and Sex\n\n"))
+  cat(paste0("\nFigure ",fig_n, ": Boxplot showing the distribution of ", vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
 
   post_hoc_h1_list[[i]]|>
     flextable::flextable_to_rmd()
     tab_n = tab_n + 1
-    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing baseline group to treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing the control null group (Adjuvant+Saline) to treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
 
   post_hoc_h2_list[[i]]|>
     flextable::flextable_to_rmd()
