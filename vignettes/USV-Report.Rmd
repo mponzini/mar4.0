@@ -191,28 +191,25 @@ for (i in seq_along(vars)) {
     )
 
   # Create the plot with SE
-  boxplot_list[[i]] <- ggboxplot(
-  usv_fct_compete, x = "Treatment", y = var,
-  color = "Sex", fill = "Sex", palette = "Set1"
-) +
-  geom_errorbar(data = data_summary, 
-                aes(x = Treatment, y = Mean, ymin = Mean - 2*SE, ymax = Mean + 2*SE, group = interaction(Treatment, Sex)),  
-                position = position_dodge(width = 0.8), 
-                width = 0.2, 
-                color = "black") +  
-  geom_point(data = data_summary, 
-             aes(x = Treatment, y = Mean, color = Sex, group = interaction(Treatment, Sex)), 
-             position = position_dodge(width = 0.8), 
-             size = 1, 
-             shape = 21) +  
-  facet_wrap(~PND, scales = "free_x", nrow = 1, labeller = label_both) +
-  theme_minimal() +
-  labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
-       x = "Treatment",
-       y = paste0(var, " Value")) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "bottom",
-        strip.text = element_text(size = 12, face = "bold"))
+  boxplot_list[[i]] <- ggboxplot(usv_fct_compete, x = "Treatment", y = var, color = "Sex", fill = "Sex", palette = "Set1") +
+    geom_errorbar(data = data_summary, 
+                  aes(x = Treatment, y = Mean, ymin = Mean - 2*SE, ymax = Mean + 2*SE, group = interaction(Treatment, Sex)),  
+                  position = position_dodge(width = 0.8), 
+                  width = 0.2, 
+                  color = "black") +  
+    geom_point(data = data_summary, 
+               aes(x = Treatment, y = Mean, color = Sex, group = interaction(Treatment, Sex)), 
+               position = position_dodge(width = 0.8), 
+               size = 1, 
+               shape = 21) +  
+    facet_wrap(~PND, scales = "free_x", nrow = 1, labeller = label_both) +
+    theme_minimal() +
+    labs(title = paste0("Distribution of ", var, " by Treatment & Sex"),
+         x = "Treatment",
+         y = paste0(var, " Value")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom",
+          strip.text = element_text(size = 12, face = "bold"))
   
   ######## Running post-hoc test on continuous variable
   post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
@@ -292,13 +289,13 @@ Post-hoc tests are multiple pairwise comparisons between groups to identify whic
 
 ```{r anova-tb, results='asis'}
 set_flextable_defaults(
-  font.family = "Arial",  # Optional: Set default font
-  font.size = 10,         # Optional: Set default font size
-  theme_fun = theme_vanilla # Optional: Set default theme
+  font.family = "Arial",  
+  font.size = 10,      
+  theme_fun = theme_vanilla 
 )
 
+# Loop and show all the table & figures
 for (i in seq_along(vars)) {
-  # Create flextable summary table
   merged_summary_list[[i]] |>
     as.data.frame(row.names = NULL) |>
     flextable::flextable() |>
@@ -312,18 +309,21 @@ for (i in seq_along(vars)) {
 
   # Another page break before the next iteration
   fig_n = fig_n + 1
-  cat(paste0("\nFigure ",fig_n, ": Boxplot showing the distribution of ", vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
+  cat(paste0("\nFigure ",fig_n, ": Boxplot showing the distribution of ", 
+             vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
 
   post_hoc_h1_list[[i]]|>
     flextable::flextable_to_rmd()
-    tab_n = tab_n + 1
-    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing the control null group (Adjuvant+Saline) to treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n"))
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, 
+             ": Post-hoc test for comparing the control null group (Adjuvant+Saline) to treatments with a control 95% family-wise confidence level - ", 
+             vars[i] ,"\n"))
 
   post_hoc_h2_list[[i]]|>
     flextable::flextable_to_rmd()
-    tab_n = tab_n + 1
-    cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
-    cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
   cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
 ```
