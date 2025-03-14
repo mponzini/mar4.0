@@ -204,7 +204,7 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
                              formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
           ) |>
-          select(Variable, PND, Group_Comparison = Comparison, Effect_Size, Confidence_Interval, P_Value)
+          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
 
         results_list[[as.character(pnd)]] <- dunnett_result
       }
@@ -268,7 +268,7 @@ run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Sali
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
                              formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
           ) |>
-          select(Variable, PND, Group_Comparison = Comparison, Effect_Size, Confidence_Interval, P_Value)
+          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
 
         results_list[[as.character(pnd)]] <- tukey_result
       }
