@@ -68,7 +68,8 @@ run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline"
       Confidence_Interval = ci_values,
       P_Value = ifelse(adjusted_p_values < 0.05,
                        paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
-                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
+      P_Value_Raw = p_values
     )
 
     results_list[[as.character(pnd)]] <- baseline_result
@@ -144,7 +145,8 @@ run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline"
       Confidence_Interval = ci_values,
       P_Value = ifelse(adjusted_p_values < 0.05,
                        paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
-                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+                       formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
+      P_Value_Raw = p_values
     )
 
     results_list[[as.character(pnd)]] <- treatment_result
@@ -202,7 +204,8 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
             Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr.ci, 3), round(upr.ci, 3)),
             P_Value = ifelse(adjusted_p_values < 0.05,
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
-                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
+            P_Value_Raw = dunnett_raw$pval
           ) |>
           select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
 
@@ -266,7 +269,8 @@ run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Sali
             Confidence_Interval = sprintf("[%.3f, %.3f]", round(lwr, 3), round(upr, 3)),
             P_Value = ifelse(adjusted_p_values < 0.05,
                              paste0(formatC(round(adjusted_p_values, 3), format = "f", digits = 3), " *"),
-                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3))
+                             formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
+            P_Value_Raw = tukey_raw$`p adj`
           ) |>
           select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
 
