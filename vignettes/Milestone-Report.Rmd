@@ -316,12 +316,39 @@ for (i in vars_binary) {
   post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
 }
 
+# Finalize the tables (updating the raw_pval to hypothesis level fdr)
+fdr_values <- p.adjust(unlist(lapply(post_hoc_h1_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
+fdr_adjusted <- ifelse(fdr_adjusted < 0.05, paste0(fdr_adjusted, "*"), as.character(fdr_adjusted))
+index <- 1
+for (i in seq_along(post_hoc_h1_list)) {
+  if (!is.null(post_hoc_h1_list[[i]])) {
+    n <- nrow(post_hoc_h1_list[[i]])
+    post_hoc_h1_list[[i]]$FDR <- fdr_values[index:(index + n - 1)] 
+    post_hoc_h1_list[[i]] <- post_hoc_h1_list[[i]] |>
+      select(-P_Value_Raw) |> 
+      flextable() |>  
+      set_table_properties(layout = "autofit") 
+    index <- index + n
+  }
+}
 
+# Extract non-null P_Value_Raw values
 
-
-
+fdr_values <- p.adjust(unlist(lapply(post_hoc_h2_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
+fdr_adjusted <- ifelse(fdr_adjusted < 0.05, paste0(fdr_adjusted, "*"), as.character(fdr_adjusted))
+index <- 1
+for (i in seq_along(post_hoc_h2_list)) {
+  if (!is.null(post_hoc_h2_list[[i]])) {
+    n <- nrow(post_hoc_h2_list[[i]])
+    post_hoc_h2_list[[i]]$FDR <- fdr_values[index:(index + n - 1)]
+    post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] %>%
+      select(-P_Value_Raw) |>  
+      flextable() |>  
+      set_table_properties(layout = "autofit") 
+    index <- index + n
+  }
+}
 ```
-
 
 # Background
 

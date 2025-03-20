@@ -59,7 +59,7 @@ run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline"
       ci_values <- c(ci_values, as.character(ci_diff))
     }
 
-    adjusted_p_values <- p.adjust(p_values, method = "holm")
+    adjusted_p_values <- p.adjust(p_values, method = "bonferroni")
 
     baseline_result <- data.frame(
       PND = as.character(pnd),
@@ -77,7 +77,7 @@ run_posthoc_test_cat_h1 <- function(data, var, control_group = "Adjuvant+Saline"
 
   final_results <- bind_rows(results_list)
   if (nrow(final_results) > 0) {
-    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+    return(final_results )
   } else {
     return("No valid comparisons due to lack of data.")
   }
@@ -136,7 +136,7 @@ run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline"
       }
     }
 
-    adjusted_p_values <- p.adjust(p_values, method = "holm")
+    adjusted_p_values <- p.adjust(p_values, method = "bonferroni")
 
     treatment_result <- data.frame(
       PND = as.character(pnd),
@@ -154,7 +154,7 @@ run_posthoc_test_cat_h2 <- function(data, var, control_group = "Adjuvant+Saline"
 
   final_results <- bind_rows(results_list)
   if (nrow(final_results) > 0) {
-    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+    return(final_results )
   } else {
     return("No valid comparisons due to lack of data.")
   }
@@ -207,7 +207,7 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
                              formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
             P_Value_Raw = dunnett_raw$pval
           ) |>
-          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
+          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value,P_Value_Raw)
 
         results_list[[as.character(pnd)]] <- dunnett_result
       }
@@ -221,7 +221,7 @@ run_posthoc_test_num_h1 <- function(data, vars, control_group = "Adjuvant+Saline
   final_results <- bind_rows(final_results_list, .id = "Variable")
 
   if (nrow(final_results) > 0) {
-    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+    return(final_results )
   } else {
     return("No valid comparisons due to lack of data.")
   }
@@ -272,7 +272,7 @@ run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Sali
                              formatC(round(adjusted_p_values, 3), format = "f", digits = 3)),
             P_Value_Raw = tukey_raw$`p adj`
           ) |>
-          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value)
+          select(Variable, PND, Group_Comparison = Comparison, Mean_Difference, Confidence_Interval, P_Value,P_Value_Raw)
 
         results_list[[as.character(pnd)]] <- tukey_result
       }
@@ -286,7 +286,7 @@ run_posthoc_test_num_h2 <- function(data, vars, exclude_control = "Adjuvant+Sali
   final_results <- bind_rows(final_results_list, .id = "Variable")
 
   if (nrow(final_results) > 0) {
-    return(final_results |> flextable() |> set_table_properties(layout = "autofit"))
+    return(final_results )
   } else {
     return("No valid comparisons due to lack of data.")
   }
