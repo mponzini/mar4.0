@@ -4,18 +4,25 @@ output:
   bookdown::word_document2:
     number_section: false
     reference_docx: docx_landscape.docx
-date: "2025-01-09"
+date: "2025-03-21"
 editor_options: 
   chunk_output_type: console
 ---
 
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE , warning=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
                flextable, mar4.0)
+
 sd_data = sd_adult |>
-  rename(Treatment = Treat)
+  rename(Treatment = Treat) |>
+  left_join(weights |> 
+              filter(Week == 15) |> 
+              select(`Animal ID`,Weights), 
+            by = "Animal ID") |>
+  mutate(`Total number Grooming Self` = as.numeric(`Total number Grooming Self`),
+         Weights = as.numeric(Weights))
 ```
 
 ```{r}
@@ -81,9 +88,25 @@ perform_anova <- function(model, type = "III") {
 ```{r}
 tx_tbl <- sd_data |>
   dplyr::select(
-    Treatment, `Total duration Non-social (Total)`, `Total duration Social Investigation (Total)`, `Total duration Play`, `Total duration Grooming Self`) |>
+    Treatment, Weights,
+    `Total duration Non-social (Total)`, 
+    `Total duration Social Investigation (Total)`, 
+    `Total duration Play`, 
+    `Total duration Grooming Self`,
+    `Total number Play`,
+    `Total number Grooming Self`
+  ) |>
   gtsummary::tbl_summary(
     by = Treatment,
+    type = list(
+      Weights ~ "continuous2",
+      `Total duration Non-social (Total)` ~ "continuous2",
+      `Total duration Social Investigation (Total)` ~ "continuous2",
+      `Total duration Play` ~ "continuous2",
+      `Total duration Grooming Self` ~ "continuous2",
+      `Total number Play` ~ "continuous2",
+      `Total number Grooming Self` ~ "continuous2"
+    ),
     statistic = list(
       gtsummary::all_continuous2() ~ c(
         "{mean} ({sd})",
@@ -94,38 +117,57 @@ tx_tbl <- sd_data |>
   ) |>
   gtsummary::add_overall()
 
+
 tx_sex_tbl <- sd_data |>
   dplyr::select(
-    Treatment, Sex, `Total duration Non-social (Total)`, `Total duration Social Investigation (Total)`, `Total duration Play`, `Total duration Grooming Self`) |>
+    Treatment, Weights, Sex,
+    `Total duration Non-social (Total)`, 
+    `Total duration Social Investigation (Total)`, 
+    `Total duration Play`, 
+    `Total duration Grooming Self`,
+    `Total number Play`,
+    `Total number Grooming Self`
+  ) |>
   gtsummary::tbl_strata(
     strata = Sex,
     .tbl_fun = 
       ~ .x |>
-      gtsummary::tbl_summary(
-        by = Treatment,
-        statistic = list(
-          gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})",
-            "{median} [{p25}, {p75}]",
-            "{min}, {max}"
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = list(
+            Weights ~ "continuous2",
+            `Total duration Non-social (Total)` ~ "continuous2",
+            `Total duration Social Investigation (Total)` ~ "continuous2",
+            `Total duration Play` ~ "continuous2",
+            `Total duration Grooming Self` ~ "continuous2",
+            `Total number Play` ~ "continuous2",
+            `Total number Grooming Self` ~ "continuous2"
+          ),
+          statistic = list(
+            gtsummary::all_continuous2() ~ c(
+              "{mean} ({sd})",
+              "{median} [{p25}, {p75}]",
+              "{min}, {max}"
+            )
           )
-        )
-      ) |>
-      gtsummary::add_overall() |>
-      gtsummary::modify_header(
-        gtsummary::all_stat_cols() ~ "**{level}**"
-      ),
+        ) |>
+        gtsummary::add_overall() |>
+        gtsummary::modify_header(
+          gtsummary::all_stat_cols() ~ "**{level}**"
+        ),
     .combine_with = 'tbl_stack'
   )
 ```
 
 
-```{r}
+```{r warning=FALSE}
 # Comment Code to examine the distribution and model fitting
 # hist(sd_data$`Total duration Non-social (Total)`)
 # hist(sd_data$`Total duration Play`)
 # hist(sd_data$`Total duration Social Investigation (Total)`)
 # hist(sd_data$`Total duration Grooming Self`)
+# hist(sd_data$`Total number Play`)
+# hist(sd_data$`Total number Grooming Self`)
 # sim_res <- DHARMa::simulateResiduals(fittedModel = model1)
 # hist(sim_res$fittedResiduals)
 # Plot residuals vs fitted values
@@ -138,7 +180,9 @@ data = sd_data
 vars = c("Total duration Non-social (Total)", 
          "Total duration Play", 
          "Total duration Social Investigation (Total)", 
-         "Total duration Grooming Self")
+         "Total duration Grooming Self",
+         "Total number Play",   # THIS IS LIKELY TO BE 0 INFLATED
+         "Total number Grooming Self")
 
 usv_anova_tb <- data.frame(Variables = c("Interaction - Treatment",
                                          "Interaction - Sex",
@@ -148,13 +192,13 @@ usv_anova_tb <- data.frame(Variables = c("Interaction - Treatment",
 merged_summary_list <- list()
 
 # Main loop
-for (i in 1:length(vars)) {
+for (i in 1:4) {
   var <- vars[i]
   model_type <- if (var %in% c("Total duration Play", "Total duration Grooming Self")) "glmer" else "lmer"
   
   # Define formulas
-  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex`  + (1 | `Litter ID`)")
-  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  (1 | `Litter ID`)")
+  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  Weights + (1 | `Litter ID`)")
 
   # Fit models
   model1 <- fit_model(var, formula1, data, model_type)
@@ -184,18 +228,43 @@ for (i in 1:length(vars)) {
 #   rownames(usv_tb_contrast) <- rownames(emm_s.t$contrasts)
 }
 
+# #5 Total number Play - THIS IS a 0 INFLATED VARIABLE
+
+formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  Weights + (1 | `Litter ID`)")
+model1 <- glmmTMB::glmmTMB(as.formula(formula1), family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
+model2 <- glmmTMB::glmmTMB(as.formula(formula2), family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
+summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
+merged_summary_list[[5]] <- merged_summary_df
+usv_anova_tb[1:3, vars[5]] <- perform_anova(model1)[2:4]
+usv_anova_tb[4:5, vars[5]] <- perform_anova(model2)[2:3]
+  
+
+# #6 Total number Grooming Self
+formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  Weights + (1 | `Litter ID`)")
+model1 <- glmmTMB::glmmTMB(as.formula(formula1), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
+model2 <- glmmTMB::glmmTMB(as.formula(formula2), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
+summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
+merged_summary_list[[6]] <- merged_summary_df
+usv_anova_tb[1:3, vars[6]] <- perform_anova(model1)[2:4]
+usv_anova_tb[4:5, vars[6]] <- perform_anova(model2)[2:3]
+
 usv_anova_tb = usv_anova_tb |> 
   column_to_rownames(var = "Variables") |>
   t() |>
   round(3)
 ```
 
-
 # Background
 
-In MAR 4.0 project, this section we will wants to know analysis result on the USV data. 
+In MAR 4.0 project, this section we will wants to know analysis result on the	Social Dyads data. 
 
-We are going to run the analysis use R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+We are going to run the analysis use R-package structure within github. R 4.4.3 is used for the analysis, and we are wrapping all the materials into a R package.
 
 # Data Processing
 
@@ -203,9 +272,11 @@ The `familiarity` trials were excluded. Any animals that did not explore at leas
 
 The interested variables at USVs data are: `r paste(vars, collapse = ", ")`.
 
+Weight for adult use the data at the 15 month.
+
 # Summary statistics
 
-The all interested variables were summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by Treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
+The all interested variables were summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
 
 ```{r summary-tbl}
 tx_tbl |>
@@ -251,6 +322,8 @@ tx_sex_tbl |>
 # Model Results
 
 The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models (Total duration Non-social and Total duration Social Investigation) or generalized regression with *Tweedie* distribution (Total duration Play and Total duration Grooming Self), incorporating a random litter effect. Negative binomial regression also examined but the fitting performance is worse than Tweedie.
+
+Negative binomial or Poisson Regression are fitted to count variables.
 
 The regression fitting process followed these steps:
 

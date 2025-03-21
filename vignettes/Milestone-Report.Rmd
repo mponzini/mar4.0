@@ -13,7 +13,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
-               flextable, rstatix, ggpubr, ggbiplot, factoextra, ggplot2, mar4.0)
+               flextable, rstatix, ggpubr, ggbiplot, factoextra, survival, survminer, ggplot2, mar4.0)
 knitr::opts_chunk$set(fig.width=14, fig.height=8)
 fig_n = 0
 tab_n = 0
@@ -119,7 +119,8 @@ summary_tbls <- function(
 
 # Ensure PND is a factor with reference level set to "4"
 data = milestones |>
-  mutate(Startle = ifelse(Startle=="N",0,1),
+  mutate(`Animal ID` = ifelse(is.na(`Animal ID`),paste0(`Litter ID`,"_99"),`Animal ID`),
+          Startle = ifelse(Startle=="N",0,1),
          `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
          PND = relevel(factor(PND), ref = "4"),
          `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0) |> as.factor(),
@@ -386,6 +387,78 @@ for (i in seq_along(post_hoc_h2_list)) {
 }
 ```
 
+
+```{r}
+###################### Run the model and create plot for survival variables
+var_survival = c(6:8)
+
+for (i in var_survival) {
+  var <- vars[i]
+
+  data_survival = data[,c("Animal ID","PND",var, "Treatment","Sex")] |>
+    na.omit() |>
+    mutate(
+      PND = as.numeric(as.character(PND)),
+      censor = ifelse(`Negative Geotaxis` != 30, 1, 0),
+      Treatment = factor(Treatment, 
+                         levels = c("Adjuvant+Saline", "CRMP1+CRMP2", 
+                                    "CRMP1+GDA", "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE")),
+      Sex = factor(Sex, levels = c("M", "F"))
+      ) |>
+    group_by(`Animal ID`) %>%
+    mutate(
+      first_event_PND = ifelse(any(censor == 1), min(PND[censor == 1]), Inf)
+    ) %>%
+    filter(PND <= first_event_PND) %>%
+    ungroup()
+
+  # Run Cox model and extract tidy summary with exponentiation coefficients (hazard ratios)
+  coxph(Surv(PND, censor) ~ Treatment + Sex, data = data_survival)
+  cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE)
+  cox_tidy$term <- c("CRMP1+CRMP2 vs Adjuvant+Saline",
+                     "CRMP1+GDA vs Adjuvant+Saline",
+                     "LDHA+LDHB+CRMP1+STIP1 vs Adjuvant+Saline",
+                     "STIP1+NSE vs Adjuvant+Saline",
+                     "F vs M")
+  merged_summary_list[[i]] <- cox_tidy
+  
+  # Create and store bar plot
+  plot_summary <- data_survival |>
+    group_by(Treatment, Sex, PND) |> 
+    summarise(
+      Proportion_Yes = mean(censor),
+      n = n(),
+      SE = sqrt((Proportion_Yes * (1 - Proportion_Yes)) / n),  # Standard Error for Proportions
+      .groups = "drop"
+    ) |> 
+    mutate(
+      Lower = pmax(Proportion_Yes - 2 * SE, 0),  # Ensure lower bound is not negative
+      Upper = pmin(Proportion_Yes + 2 * SE, 1)   # Ensure upper bound does not exceed 1
+    )
+
+  # Create bar plot with 2SE error bars
+  plot_list[[i]] <- ggplot(plot_summary, aes(x = Treatment, y = Proportion_Yes, fill = Sex, color = Sex)) +
+    geom_bar(stat = "identity", position = position_dodge(0.8)) + 
+    geom_errorbar(aes(ymin = Lower, ymax = Upper), color = "black",
+                  position = position_dodge(0.8), width = 0.2) +  
+    facet_wrap(~PND,labeller = label_both) +
+    scale_fill_brewer(palette = "Set1") +  
+    scale_color_brewer(palette = "Set1") +
+    theme_minimal() +
+    labs(title = paste0("Proportion of Animals First Record Achieves 30s Mark in ", var, " by Treatment & Sex"),
+         x = "Treatment",
+         y = paste0(var, " Proportion")) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom",
+          panel.grid.major = element_line(color = "gray85"),
+          panel.grid.minor = element_blank(),
+          strip.background = element_blank(), 
+          strip.text = element_text(face = "bold"))
+  
+  #post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, var = var)
+  #post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
+}
+```
 # Background
 
 In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
