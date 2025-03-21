@@ -13,7 +13,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
-               flextable, rstatix, ggpubr, mar4.0)
+               flextable, rstatix, ggpubr, ggbiplot, factoextra, ggplot2, mar4.0)
 knitr::opts_chunk$set(fig.width=14, fig.height=8)
 fig_n = 0
 tab_n = 0
@@ -142,7 +142,7 @@ post_hoc_h2_list <- list()
 # Main loop over variables
 for (i in vars_numeric) {
   var <- vars[i]
-  
+  print(var)
   # Data preparation (ensure complete cases)
   data_fct_compete <- data |>
     dplyr::mutate(
@@ -156,13 +156,31 @@ for (i in vars_numeric) {
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
   
+  # If working on the variable with 30s max recording, trimming those equal to 30s
+  # Also check low counting PND and exclude those
+  if (var %in% c("Circle Traverse","Negative Geotaxis","Cliff Avoidance")){
+    data_fct_compete <- data_fct_compete |>
+      filter(!is.na(!!sym(var)) & !!sym(var) < 30)
+    
+    exclude_pnd <- data_fct_compete |>
+      group_by(PND, Treatment, Sex) |>
+      summarise(n = n(), .groups = "drop") |>
+      filter(n <= 1) |>
+      pull(PND) |>
+      unique()
+
+    data_fct_compete <- data_fct_compete |>
+      filter(!PND %in% exclude_pnd)
+  }
+
+  
   # Perform 3-way ANOVA (Treatment * Sex * PND)
   mix_aov_3way <- rstatix::anova_test(
     dv = !!sym(var), 
     wid = Animal, 
     between = c(Treatment, Sex), 
     within = PND, 
-    data = data_fct_compete, 
+    data = data_fct_compete, #|> filter(PND != "12"), 
     type = 3
   )
 
@@ -178,8 +196,25 @@ for (i in vars_numeric) {
   )
 
   # Extract p-values from ANOVA tests and merge them into one table
-  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model)` = p)  
-  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model)` = p) 
+  if (!is.null(mix_aov_3way$ANOVA)) {
+    p_values_3way <- mix_aov_3way$ANOVA[, c("Effect", "p")] |>
+      dplyr::rename(`P-Value (3-Way Model)` = p)
+    
+    p_values_2way <- mix_aov_2way$ANOVA[, c("Effect", "p")] |>
+      dplyr::rename(`P-Value (2-Way Model)` = p)
+  } else {
+    p_values_3way <- mix_aov_3way |>
+      dplyr::as_tibble() |>
+      select(`Effect`, `p`) |>
+      dplyr::rename(`P-Value (3-Way Model)` = p) |>
+      as.data.frame()
+    
+    p_values_2way <- mix_aov_2way |>
+      dplyr::as_tibble() |>
+      dplyr::select(Effect, p) |>
+      dplyr::rename(`P-Value (2-Way Model)` = p) |>
+      as.data.frame()
+  }
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
   
   ######## Store results in list format for further use
@@ -229,6 +264,7 @@ merged_estimate_list = list()
 
 for (i in vars_binary) {
   var <- vars[i]
+  print(var)
   model_type = ifelse(i == 9, "glm","glmer")
 
   if (model_type == "glm"){
@@ -318,12 +354,12 @@ for (i in vars_binary) {
 
 # Finalize the tables (updating the raw_pval to hypothesis level fdr)
 fdr_values <- p.adjust(unlist(lapply(post_hoc_h1_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
-fdr_adjusted <- ifelse(fdr_adjusted < 0.05, paste0(fdr_adjusted, "*"), as.character(fdr_adjusted))
+fdr_adjusted <- ifelse(fdr_values < 0.05, paste0(fdr_values, "*"), as.character(fdr_values))
 index <- 1
 for (i in seq_along(post_hoc_h1_list)) {
   if (!is.null(post_hoc_h1_list[[i]])) {
     n <- nrow(post_hoc_h1_list[[i]])
-    post_hoc_h1_list[[i]]$FDR <- fdr_values[index:(index + n - 1)] 
+    post_hoc_h1_list[[i]]$FDR <- fdr_adjusted[index:(index + n - 1)] 
     post_hoc_h1_list[[i]] <- post_hoc_h1_list[[i]] |>
       select(-P_Value_Raw) |> 
       flextable() |>  
@@ -335,12 +371,12 @@ for (i in seq_along(post_hoc_h1_list)) {
 # Extract non-null P_Value_Raw values
 
 fdr_values <- p.adjust(unlist(lapply(post_hoc_h2_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
-fdr_adjusted <- ifelse(fdr_adjusted < 0.05, paste0(fdr_adjusted, "*"), as.character(fdr_adjusted))
+fdr_adjusted <- ifelse(fdr_values < 0.05, paste0(fdr_values, "*"), as.character(fdr_values))
 index <- 1
 for (i in seq_along(post_hoc_h2_list)) {
   if (!is.null(post_hoc_h2_list[[i]])) {
     n <- nrow(post_hoc_h2_list[[i]])
-    post_hoc_h2_list[[i]]$FDR <- fdr_values[index:(index + n - 1)]
+    post_hoc_h2_list[[i]]$FDR <- fdr_adjusted[index:(index + n - 1)]
     post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] %>%
       select(-P_Value_Raw) |>  
       flextable() |>  
@@ -486,4 +522,235 @@ for (i in c(vars_numeric,vars_binary)) {
 
 
 ```
+
+
+
+## Principle Component Analysis (PCA)
+
+This PCA analysis using all raw scores at each time-point, separately. 
+
+- Plot PC1 vs PC2, potentially include loading
+
+- Examine importance scores for PC1, PC2, and potentially PC3
+
+### PCA Result at Week 4
+
+```{r PCA-4, results='asis'}
+# Getting the data ready for PCA
+data_pca <- data |>
+  filter(PND == "4") |>    # PCA at 4th week
+  select(all_of(vars[1:9]),Treatment)
+non_constant_vars <- names(data_pca %>% select(-Treatment))[sapply(data_pca %>% select(-Treatment), function(col) {
+  if (all(is.na(col))) return(FALSE)  
+  var(col, na.rm = TRUE) > 0  
+})]
+data_pca <- data_pca |>
+  select(all_of(c(non_constant_vars,"Treatment"))) |>
+  na.omit()
+data_pca_scaled <- data_pca |> 
+  select(-Treatment) |> 
+  scale()
+
+# Extract PCA Importance Scores
+pca_result <- prcomp(data_pca_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- summary(pca_result)
+importance_scores <- as.data.frame(pca_summary$importance)
+colnames(importance_scores) <- paste0("PC", seq_len(ncol(importance_scores)))
+loadings <- as.data.frame(pca_result$rotation)  # Extract PC1 & PC2 loadings
+
+# PCA Biplot
+p <- ggbiplot(pca_result, 
+              choices = c(1,2),
+              ellipse = TRUE,
+              var.scale = 1,
+              obs.scale = 1,
+              varname.size = 5,  
+              groups = data_pca$Treatment, 
+              repel = TRUE) +
+  geom_point(size = 2, alpha = 0.8, aes(color = data_pca$Treatment)) +  # Color points
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    text = element_text(size = 16)  # Ensures readable variable labels
+  ) +
+  xlab("Principal Component 1 (PC1)") +
+  ylab("Principal Component 2 (PC2)") +
+  ylim(-5, 5)  # Adjust Y-axis range
+print(p)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Biplot (PC1 vs PC2) for Milestone Data at PND = 4 \n\n"))
+
+# Scree Plot to Show Variance Explained
+fviz_eig(pca_result)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Scree plot for Milestone Data at PND = 4 \n\n"))
+
+loadings |>
+  round(4) |>
+  as.data.frame() |>
+  tibble::rownames_to_column(var = "Variable") |>
+  flextable::flextable() |>
+  width(width = 1.15) |>
+  width(j = 1, width = 1.16) |>
+  autofit()
+tab_n = tab_n + 1
+cat(paste0("\nTable ",tab_n, ": Factor Loading for PCA Analysis at PND = 4 \n\n"))
+```
+
+
+
+
+### PCA Result at Week 8
+
+```{r PCA-8, results='asis'}
+# Getting the data ready for PCA
+data_pca <- data |>
+  filter(PND == "8") |>    # PCA at 8th week
+  select(all_of(vars[1:9]),Treatment)
+non_constant_vars <- names(data_pca %>% select(-Treatment))[sapply(data_pca %>% select(-Treatment), function(col) {
+  if (all(is.na(col))) return(FALSE)  
+  var(col, na.rm = TRUE) > 0  
+})]
+data_pca <- data_pca |>
+  select(all_of(c(non_constant_vars,"Treatment"))) |>
+  na.omit()
+data_pca_scaled <- data_pca |> 
+  select(-Treatment) |> 
+  scale()
+
+# Extract PCA Importance Scores
+pca_result <- prcomp(data_pca_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- summary(pca_result)
+importance_scores <- as.data.frame(pca_summary$importance)
+colnames(importance_scores) <- paste0("PC", seq_len(ncol(importance_scores)))
+loadings <- as.data.frame(pca_result$rotation)  # Extract PC1 & PC2 loadings
+
+# PCA Biplot
+p <- ggbiplot(pca_result, 
+              choices = c(1,2),
+              ellipse = TRUE,
+              var.scale = 1,
+              obs.scale = 1,
+              varname.size = 5,  
+              groups = data_pca$Treatment, 
+              repel = TRUE) +
+  geom_point(size = 2, alpha = 0.8, aes(color = data_pca$Treatment)) +  # Color points
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    text = element_text(size = 16)  # Ensures readable variable labels
+  ) +
+  xlab("Principal Component 1 (PC1)") +
+  ylab("Principal Component 2 (PC2)") +
+  ylim(-5, 5)  # Adjust Y-axis range
+print(p)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Biplot (PC1 vs PC2) for Milestone Data at PND = 8 \n\n"))
+
+# Scree Plot to Show Variance Explained
+fviz_eig(pca_result)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Scree plot for Milestone Data at PND = 8 \n\n"))
+
+loadings |>
+  round(4) |>
+  as.data.frame() |>
+  tibble::rownames_to_column(var = "Variable") |>
+  flextable::flextable() |>
+  width(width = 1.15) |>
+  width(j = 1, width = 1.16) |>
+  autofit()
+tab_n = tab_n + 1
+cat(paste0("\nTable ",tab_n, ": Factor Loading for PCA Analysis at PND = 8 \n\n"))
+```
+
+
+### PCA Result at Week 12
+
+```{r PCA-12, results='asis'}
+# Getting the data ready for PCA
+data_pca <- data |>
+  filter(PND == "12") |>    # PCA at 12th week
+  select(all_of(vars[1:9]),Treatment)
+non_constant_vars <- names(data_pca %>% select(-Treatment))[sapply(data_pca %>% select(-Treatment), function(col) {
+  if (all(is.na(col))) return(FALSE)  
+  var(col, na.rm = TRUE) > 0  
+})]
+data_pca <- data_pca |>
+  select(all_of(c(non_constant_vars,"Treatment"))) |>
+  na.omit()
+data_pca_scaled <- data_pca |> 
+  select(-Treatment) |> 
+  scale()
+
+# Extract PCA Importance Scores
+pca_result <- prcomp(data_pca_scaled, center = TRUE, scale. = TRUE)
+pca_summary <- summary(pca_result)
+importance_scores <- as.data.frame(pca_summary$importance)
+colnames(importance_scores) <- paste0("PC", seq_len(ncol(importance_scores)))
+loadings <- as.data.frame(pca_result$rotation)  # Extract PC1 & PC2 loadings
+
+# PCA Biplot
+p <- ggbiplot(pca_result, 
+              choices = c(1,2),
+              ellipse = TRUE,
+              var.scale = 1,
+              obs.scale = 1,
+              varname.size = 5,  
+              groups = data_pca$Treatment, 
+              repel = TRUE) +
+  geom_point(size = 2, alpha = 0.8, aes(color = data_pca$Treatment)) +  # Color points
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
+    text = element_text(size = 16)  # Ensures readable variable labels
+  ) +
+  xlab("Principal Component 1 (PC1)") +
+  ylab("Principal Component 2 (PC2)") +
+  ylim(-5, 5)  # Adjust Y-axis range
+print(p)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Biplot (PC1 vs PC2) for Milestone Data at PND = 12 \n\n"))
+
+# Scree Plot to Show Variance Explained
+fviz_eig(pca_result)
+fig_n = fig_n + 1
+cat(paste0("\nFigure ",fig_n, 
+           ": PCA Scree plot for Milestone Data at PND = 12 \n\n"))
+
+loadings |>
+  round(4) |>
+  as.data.frame() |>
+  tibble::rownames_to_column(var = "Variable") |>
+  flextable::flextable() |>
+  width(width = 1.15) |>
+  width(j = 1, width = 1.16) |>
+  autofit()
+tab_n = tab_n + 1
+cat(paste0("\nTable ",tab_n, ": Factor Loading for PCA Analysis at PND = 12 \n\n"))
+```
+
 
