@@ -16,6 +16,13 @@ mar_network <- paste0(
 )
 
 dataset <- readxl::read_xlsx(
-  path = paste0(mar_network, "/Data/MAR 4.0 EPM All Data.xlsx")
+  path = paste0(mar_network, "/Data/MAR 4.0 EPM All Data_FREEZING_updated_1-28-25.xlsx")
 )
 
+epm <- dataset |>
+  dplyr::filter(
+    `SUM CHECK` != 0
+  )
+
+
+usethis::use_data(epm, overwrite = TRUE)

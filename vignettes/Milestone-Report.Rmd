@@ -131,7 +131,8 @@ data = milestones |>
 
 # Variables to analyze, including Count
 vars = names(data)[11:24]
-vars_numeric = c(1:8,14)
+vars_numeric = c(1:5,14)
+vars_survival = c(6:8)
 vars_binary = c(9,11,12,13)
 
 # Create ANOVA results table
@@ -143,7 +144,6 @@ post_hoc_h2_list <- list()
 # Main loop over variables
 for (i in vars_numeric) {
   var <- vars[i]
-  print(var)
   # Data preparation (ensure complete cases)
   data_fct_compete <- data |>
     dplyr::mutate(
@@ -265,7 +265,6 @@ merged_estimate_list = list()
 
 for (i in vars_binary) {
   var <- vars[i]
-  print(var)
   model_type = ifelse(i == 9, "glm","glmer")
 
   if (model_type == "glm"){
@@ -390,16 +389,16 @@ for (i in seq_along(post_hoc_h2_list)) {
 
 ```{r}
 ###################### Run the model and create plot for survival variables
-var_survival = c(6:8)
+merged_forest_plot = list()
 
-for (i in var_survival) {
+for (i in vars_survival) {
   var <- vars[i]
 
-  data_survival = data[,c("Animal ID","PND",var, "Treatment","Sex")] |>
+  data_survival = data[,c("Animal ID","Litter ID","PND",var, "Treatment","Sex")] |>
     na.omit() |>
     mutate(
       PND = as.numeric(as.character(PND)),
-      censor = ifelse(`Negative Geotaxis` != 30, 1, 0),
+      censor = ifelse(!!sym(var) != 30, 1, 0),
       Treatment = factor(Treatment, 
                          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", 
                                     "CRMP1+GDA", "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE")),
@@ -413,14 +412,41 @@ for (i in var_survival) {
     ungroup()
 
   # Run Cox model and extract tidy summary with exponentiation coefficients (hazard ratios)
-  coxph(Surv(PND, censor) ~ Treatment + Sex, data = data_survival)
-  cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE)
+  cox_fit <- coxph(Surv(PND, censor) ~ Treatment + Sex + `Litter ID`, data = data_survival)
+  cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(!stringr::str_detect(term, "Litter ID"))
   cox_tidy$term <- c("CRMP1+CRMP2 vs Adjuvant+Saline",
                      "CRMP1+GDA vs Adjuvant+Saline",
                      "LDHA+LDHB+CRMP1+STIP1 vs Adjuvant+Saline",
                      "STIP1+NSE vs Adjuvant+Saline",
                      "F vs M")
-  merged_summary_list[[i]] <- cox_tidy
+  merged_summary_list[[i]] <- cox_tidy |>
+    transmute(
+      Term = term,
+      HR = round(estimate, 3),
+      `Std. Error` = round(std.error, 3),
+      `P-value` = ifelse(p.value < 0.001, "<0.001", round(p.value, 3)),
+      `95% CI Lower` = round(conf.low, 3),
+      `95% CI Upper` = round(conf.high, 3)
+    )
+
+  # Draw forest plot ("Hazard Ratios with 95% Confidence Intervals")
+  cox_plot_data <- merged_summary_list[[i]] |>
+    mutate(lower = `95% CI Lower`,
+           upper = `95% CI Upper`)|>
+    filter(Term != "F vs M")
+  merged_forest_plot[[i]] = ggplot(cox_plot_data, aes(x = HR, y = reorder(Term, HR))) +
+    geom_point(size = 3, color = "darkblue") +
+    geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2, color = "darkblue") +
+    geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+    #geom_text(aes(label = paste0("p=", `P-value`), x = upper * 1.1),hjust = 0, size = 4) +
+    scale_x_log10() +
+    labs(
+      x = "Hazard Ratio (log scale)",
+      y = ""
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(panel.grid.major.y = element_blank())
   
   # Create and store bar plot
   plot_summary <- data_survival |>
@@ -547,9 +573,9 @@ set_flextable_defaults(
   font.size = 10,         # Optional: Set default font size
   theme_fun = theme_vanilla # Optional: Set default theme
 )
-for (i in c(vars_numeric,vars_binary)) {
+for (i in c(vars_numeric,vars_binary,vars_survival)) {
   # Create flextable summary table
-  if (!(i%in%c(5,6,7,8))){
+  if (!(i%in%c(5))){
       merged_summary_list[[i]] |>
       as.data.frame(row.names = NULL) |>
       flextable::flextable() |>
@@ -573,6 +599,14 @@ for (i in c(vars_numeric,vars_binary)) {
                  " by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
     }
 
+  if (i %in% c(6,7,8)){
+    print(merged_forest_plot[[i]])
+    fig_n = fig_n + 1
+    cat(paste0("\nFigure ",fig_n, 
+           ": Forest Plot shows Hazard Ratios with 95% Confidence Intervals of ", vars[i] ,
+           " at each Treatment Group\n\n"))
+  }
+  
   if (!(i%in%c(5,6,7,8))){
     post_hoc_h1_list[[i]]|>
       flextable::flextable_to_rmd()
