@@ -30,7 +30,7 @@ time_to_event <- function(
       tmp <- lapply(
         pnd_data,
         function(x) {
-          coxph(Surv(outcome, censor) ~ Treatment + Sex + `Litter ID`, data = x)
+          coxph(Surv(outcome, censor) ~ Treatment + Sex + cluster(`Litter ID`), data = x)
         }
       )
       return(tmp)
