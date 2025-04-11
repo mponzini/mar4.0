@@ -396,9 +396,9 @@ plot_list_km_curve = list()
 for (i in vars_survival) {
   var <- vars[i]
 
-  data_survival = data[,c("Animal ID","Litter ID","PND",var, "Treatment","Sex")] |>
+  data_survival = data[,c("Animal ID","Litter ID","PND", var, "Treatment","Sex")] |>
     mutate(
-      censor = ifelse(!!sym(var) == 30, 0, 1) |> as.character() |> as.numeric(),
+      censor = ifelse(!!sym(var) >= 30, 0, 1) |> as.character() |> as.numeric(),
       PND = factor(as.character(PND), levels = c("4", "8", "12")),
       Treatment = factor(Treatment,
                          levels = c("Adjuvant+Saline", "CRMP1+CRMP2",
@@ -412,8 +412,14 @@ for (i in vars_survival) {
   pnd_results <- list()
   pnd_km_plots <- list()
   for (pnd_val in c("4", "8", "12")) {
-    data_subset <- data_survival |> filter(PND == pnd_val)
-
+    data_subset <- data_survival |> 
+      filter(PND == pnd_val) |> 
+      mutate(
+        Treatment = forcats::fct_recode(
+          Treatment,
+          "4+Drug+Combo" = "LDHA+LDHB+CRMP1+STIP1"
+          )
+        )
     if (nrow(data_subset) > 0) {  # Only fit if there's data
       formula_fit <- paste0("Surv(`", var, "`, censor) ~ Treatment + Sex + frailty(`Litter ID`)") |>
         as.formula()
@@ -444,7 +450,7 @@ for (i in vars_survival) {
 
       pnd_results[[pnd_val]] <- cox_tidy
       
-      # Step 4. Fit KM curve
+      # Fit KM curve
       surv_object <- Surv(data_subset[[var]], data_subset$censor)
       km_fit <- survfit(surv_object ~ Treatment, data = data_subset)
       pnd_km_plots[[pnd_val]] <- ggsurvplot(
@@ -460,8 +466,6 @@ for (i in vars_survival) {
       )
     }
   }
-
-  library(patchwork)
   
   # combine PND 4/8/12 results into one table
   plot_list_km_curve[[i]] <- pnd_km_plots[["4"]]$plot + 
@@ -626,6 +630,8 @@ For numeric outcomes with a maximum measurement cap of 30 seconds, we conducted 
 The analyses were stratified by postnatal day (PND) to account for developmental differences across time points.
 
 Additionally, we visualized the estimated hazard ratios along with their 95% confidence intervals across PND levels for each treatment group.
+
+There is one animal with `Negative Geotaxis` 30.22 seconds, we will just treated it as a censored data point as other 30 seconds.
 
 ## Modeling Result
 
