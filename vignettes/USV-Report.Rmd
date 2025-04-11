@@ -313,6 +313,9 @@ for (i in seq_along(vars)) {
              vars[i] ," by Treatment and Sex across Postnatal Days (PND) with error bars depict ±2 standard errors (2SE)\n\n"))
 
   post_hoc_h1_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
   tab_n = tab_n + 1
   cat(paste0("\nTable ",tab_n, 
@@ -320,6 +323,9 @@ for (i in seq_along(vars)) {
              vars[i] ,"\n"))
 
   post_hoc_h2_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
     flextable::flextable_to_rmd()
   tab_n = tab_n + 1
   cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))

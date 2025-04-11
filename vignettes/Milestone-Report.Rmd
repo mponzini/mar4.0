@@ -13,7 +13,8 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
-               flextable, rstatix, ggpubr, ggbiplot, factoextra, survival, survminer, ggplot2, mar4.0)
+               flextable, rstatix, ggpubr, ggbiplot, factoextra, survival, 
+               survminer, ggplot2, stringr, mar4.0, patchwork)
 knitr::opts_chunk$set(fig.width=14, fig.height=8)
 fig_n = 0
 tab_n = 0
@@ -390,63 +391,113 @@ for (i in seq_along(post_hoc_h2_list)) {
 ```{r}
 ###################### Run the model and create plot for survival variables
 merged_forest_plot = list()
+plot_list_km_curve = list()
 
 for (i in vars_survival) {
   var <- vars[i]
 
   data_survival = data[,c("Animal ID","Litter ID","PND",var, "Treatment","Sex")] |>
-    na.omit() |>
     mutate(
-      PND = as.numeric(as.character(PND)),
-      censor = ifelse(!!sym(var) != 30, 1, 0),
-      Treatment = factor(Treatment, 
-                         levels = c("Adjuvant+Saline", "CRMP1+CRMP2", 
+      censor = ifelse(!!sym(var) == 30, 0, 1) |> as.character() |> as.numeric(),
+      PND = factor(as.character(PND), levels = c("4", "8", "12")),
+      Treatment = factor(Treatment,
+                         levels = c("Adjuvant+Saline", "CRMP1+CRMP2",
                                     "CRMP1+GDA", "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE")),
-      Sex = factor(Sex, levels = c("M", "F"))
-      ) |>
-    group_by(`Animal ID`) %>%
-    mutate(
-      first_event_PND = ifelse(any(censor == 1), min(PND[censor == 1]), Inf)
-    ) %>%
-    filter(PND <= first_event_PND) %>%
-    ungroup()
+      Sex = factor(Sex, levels = c("M", "F")),
+      `Litter ID` = as.factor(`Litter ID`)
+      ) |> 
+    na.omit()
 
   # Run Cox model and extract tidy summary with exponentiation coefficients (hazard ratios)
-  cox_fit <- coxph(Surv(PND, censor) ~ Treatment + Sex + `Litter ID`, data = data_survival)
-  cox_tidy <- tidy(cox_fit, exponentiate = TRUE, conf.int = TRUE) %>%
-    filter(!stringr::str_detect(term, "Litter ID"))
-  cox_tidy$term <- c("CRMP1+CRMP2 vs Adjuvant+Saline",
-                     "CRMP1+GDA vs Adjuvant+Saline",
-                     "LDHA+LDHB+CRMP1+STIP1 vs Adjuvant+Saline",
-                     "STIP1+NSE vs Adjuvant+Saline",
-                     "F vs M")
-  merged_summary_list[[i]] <- cox_tidy |>
-    transmute(
-      Term = term,
-      HR = round(estimate, 3),
-      `Std. Error` = round(std.error, 3),
-      `P-value` = ifelse(p.value < 0.001, "<0.001", round(p.value, 3)),
-      `95% CI Lower` = round(conf.low, 3),
-      `95% CI Upper` = round(conf.high, 3)
-    )
+  pnd_results <- list()
+  pnd_km_plots <- list()
+  for (pnd_val in c("4", "8", "12")) {
+    data_subset <- data_survival |> filter(PND == pnd_val)
+
+    if (nrow(data_subset) > 0) {  # Only fit if there's data
+      formula_fit <- paste0("Surv(`", var, "`, censor) ~ Treatment + Sex + frailty(`Litter ID`)") |>
+        as.formula()
+      cox_fit <- coxph(formula_fit, data = data_subset)
+      cox_tidy <- tidy(cox_fit, 
+                       exponentiate = TRUE, 
+                       conf.int = TRUE) |>
+        filter(!str_detect(term, "Litter ID"))  # remove frailty term
+
+      # Rename term nicely
+      cox_tidy$term <- c("CRMP1+CRMP2 vs Adjuvant+Saline",
+                         "CRMP1+GDA vs Adjuvant+Saline",
+                         "LDHA+LDHB+CRMP1+STIP1 vs Adjuvant+Saline",
+                         "STIP1+NSE vs Adjuvant+Saline",
+                         "F vs M")
+
+      # Add PND column
+      cox_tidy <- cox_tidy |>
+        transmute(
+          PND = pnd_val,
+          Term = term,
+          HR = round(estimate, 3),
+          `Std. Error` = round(std.error, 3),
+          `P-value` = ifelse(p.value < 0.001, "<0.001", round(p.value, 3)),
+          `95% CI Lower` = round(conf.low, 3),
+          `95% CI Upper` = round(conf.high, 3)
+        )
+
+      pnd_results[[pnd_val]] <- cox_tidy
+      
+      # Step 4. Fit KM curve
+      surv_object <- Surv(data_subset[[var]], data_subset$censor)
+      km_fit <- survfit(surv_object ~ Treatment, data = data_subset)
+      pnd_km_plots[[pnd_val]] <- ggsurvplot(
+        fit = km_fit,
+        data = data_subset |> as.data.frame(),
+        conf.int = TRUE,
+        pval = TRUE,
+        risk.table = TRUE,
+        xlab = "Time (Seconds)",
+        ylab = "Turn-Over Probability",
+        title = paste0("PND ", pnd_val),
+        ggtheme = theme_minimal()
+      )
+    }
+  }
+
+  library(patchwork)
+  
+  # combine PND 4/8/12 results into one table
+  plot_list_km_curve[[i]] <- pnd_km_plots[["4"]]$plot + 
+                              pnd_km_plots[["8"]]$plot + 
+                              pnd_km_plots[["12"]]$plot +
+                              plot_layout(ncol = 1) +
+                              plot_layout(guides = "collect") & 
+                              theme(
+                                legend.position = "right",
+                                legend.direction = "vertical"
+                              )
+
+  merged_summary_list[[i]] <- bind_rows(pnd_results)
 
   # Draw forest plot ("Hazard Ratios with 95% Confidence Intervals")
   cox_plot_data <- merged_summary_list[[i]] |>
     mutate(lower = `95% CI Lower`,
-           upper = `95% CI Upper`)|>
+           upper = `95% CI Upper`,
+           PND_label = paste0("PND = ", PND))|>
     filter(Term != "F vs M")
   merged_forest_plot[[i]] = ggplot(cox_plot_data, aes(x = HR, y = reorder(Term, HR))) +
-    geom_point(size = 3, color = "darkblue") +
-    geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2, color = "darkblue") +
-    geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
-    #geom_text(aes(label = paste0("p=", `P-value`), x = upper * 1.1),hjust = 0, size = 4) +
-    scale_x_log10() +
-    labs(
-      x = "Hazard Ratio (log scale)",
-      y = ""
-    ) +
-    theme_minimal(base_size = 14) +
-    theme(panel.grid.major.y = element_blank())
+  geom_point(size = 3, color = "darkblue") +
+  geom_errorbarh(aes(xmin = `95% CI Lower`, xmax = `95% CI Upper`), height = 0.2, color = "darkblue") +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  scale_x_log10() +
+  labs(
+    x = "Hazard Ratio (log scale)",
+    y = ""
+  ) +
+  facet_wrap(~ PND_label, ncol = 1, scales = "free_y") +  # <--- facet by PND vertically
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    strip.text = element_text(face = "bold", size = 14)
+  )
+
   
   # Create and store bar plot
   plot_summary <- data_survival |>
@@ -507,6 +558,7 @@ The all interested variables were summarized by Treatment group overall, stratif
 
 ```{r summary-tbl, results='asis'}
 for (i in seq_along(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
   summary_list <- summary_tbls(data, vars[i])
   
   purrr::walk2(summary_list, vars[i], function(tbl, var_name) {
@@ -567,6 +619,16 @@ Additionally, we use boxplots for intuitive visualizations for cross-sectional p
 
 Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two set of post-hoc tests for each of variable. The first set is all comparison between the control group and each treatment group, and the second set is across all treatment group. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
 
+## Survival Analysis
+
+For numeric outcomes with a maximum measurement cap of 30 seconds, we conducted Cox proportional hazards regression analyses. In each model, animals that did not successfully complete the task within 30 seconds were treated as censored observations.
+
+The analyses were stratified by postnatal day (PND) to account for developmental differences across time points.
+
+Additionally, we visualized the estimated hazard ratios along with their 95% confidence intervals across PND levels for each treatment group.
+
+## Modeling Result
+
 ```{r anova-tb, results='asis'}
 set_flextable_defaults(
   font.family = "Arial",  # Optional: Set default font
@@ -574,6 +636,7 @@ set_flextable_defaults(
   theme_fun = theme_vanilla # Optional: Set default theme
 )
 for (i in c(vars_numeric,vars_binary,vars_survival)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
   # Create flextable summary table
   if (!(i%in%c(5))){
       merged_summary_list[[i]] |>
@@ -582,9 +645,16 @@ for (i in c(vars_numeric,vars_binary,vars_survival)) {
       flextable::set_table_properties(layout = "autofit") |>
       flextable::flextable_to_rmd()
     tab_n = tab_n + 1
+    if (i %in% vars_survival){
+    cat(paste0("\nTable ",tab_n, 
+               ": Cox Hazard Regression Results stratified by postnatal day (PND) on ", 
+               vars[i] ,"\n\n"))
+    } else{
     cat(paste0("\nTable ",tab_n, 
                ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", 
                vars[i] ,"\n\n"))
+    }
+
   }
   
   print(plot_list[[i]])
@@ -605,6 +675,16 @@ for (i in c(vars_numeric,vars_binary,vars_survival)) {
     cat(paste0("\nFigure ",fig_n, 
            ": Forest Plot shows Hazard Ratios with 95% Confidence Intervals of ", vars[i] ,
            " at each Treatment Group\n\n"))
+
+    print(plot_list_km_curve[[i]])
+    fig_n = fig_n + 1
+    cat(paste0("\nFigure ",fig_n, 
+           ": Kaplan-Meier curves with Log-rank Test result",
+           "showing probabilities of turning over ",
+           "within 30 seconds for each Treatment group ",
+           "at postnatal days (PND) 4, 8, and 12 of **", 
+           vars[i],
+           "** \n\n"))
   }
   
   if (!(i%in%c(5,6,7,8))){
