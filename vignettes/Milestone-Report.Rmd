@@ -484,7 +484,11 @@ for (i in vars_survival) {
   cox_plot_data <- merged_summary_list[[i]] |>
     mutate(lower = `95% CI Lower`,
            upper = `95% CI Upper`,
-           PND_label = paste0("PND = ", PND))|>
+           PND_label = factor(
+             paste0(PND, "th Week"),
+             levels = paste0(c(4, 8, 12), "th Week"
+                             ))
+           )|>
     filter(Term != "F vs M")
   merged_forest_plot[[i]] = ggplot(cox_plot_data, aes(x = HR, y = reorder(Term, HR))) +
   geom_point(size = 3, color = "darkblue") +
