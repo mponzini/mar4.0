@@ -4,7 +4,7 @@ output:
   bookdown::word_document2:
     number_section: false
     reference_docx: docx_landscape.docx
-date: "2025-02-28"
+date: "2025-05-08"
 editor_options: 
   chunk_output_type: console
 ---
@@ -177,49 +177,59 @@ for (i in vars_numeric) {
 
   
   # Perform 3-way ANOVA (Treatment * Sex * PND)
-  mix_aov_3way <- rstatix::anova_test(
-    dv = !!sym(var), 
-    wid = Animal, 
-    between = c(Treatment, Sex), 
-    within = PND, 
-    data = data_fct_compete, #|> filter(PND != "12"), 
-    type = 3
+  mix_aov_3way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * Sex * PND + Error(Animal/PND)")),
+  data = data_fct_compete,
+  type = 3
   )
-
+  
   # Perform 2-way ANOVA (Treatment * PND)
-  mix_aov_2way <- rstatix::anova_test(
-    dv = !!sym(var), 
-    wid = Animal, 
-    between = c(Treatment), 
-    within = PND,
-    covariate = Sex,
-    data = data_fct_compete, 
-    type = 3
+  mix_aov_2way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * PND + Sex * PND + Error(Animal/PND)")),
+  data = data_fct_compete,
+  type = 3
   )
+  # mix_aov_3way <- rstatix::anova_test(
+  #   dv = !!sym(var), 
+  #   wid = Animal, 
+  #   between = c(Treatment, Sex), 
+  #   within = PND, 
+  #   data = data_fct_compete, #|> filter(PND != "12"), 
+  #   type = 3
+  # )
+  # 
+  # # Perform 2-way ANOVA (Treatment * PND)
+  # mix_aov_2way <- rstatix::anova_test(
+  #   dv = `Cliff Avoidance`,
+  #   wid = Animal,
+  #   between = c(Treatment),
+  #   within = PND,
+  #   covariate = Sex,
+  #   data = data_fct_compete,
+  #   type = 3
+  # )
 
   # Extract p-values from ANOVA tests and merge them into one table
   if (!is.null(mix_aov_3way$ANOVA)) {
-    p_values_3way <- mix_aov_3way$ANOVA[, c("Effect", "p")] |>
-      dplyr::rename(`P-Value (3-Way Model)` = p)
+    p_values_3way <- mix_aov_3way$ANOVA[, c("Effect", "p.value")] |>
+      dplyr::rename(`P-Value (3-Way Model)` = p.value)
     
-    p_values_2way <- mix_aov_2way$ANOVA[, c("Effect", "p")] |>
-      dplyr::rename(`P-Value (2-Way Model)` = p)
+    p_values_2way <- mix_aov_2way$ANOVA[, c("Effect", "p.value")] |>
+      dplyr::rename(`P-Value (2-Way Model)` = p.value)
   } else {
-    p_values_3way <- mix_aov_3way |>
-      dplyr::as_tibble() |>
-      select(`Effect`, `p`) |>
-      dplyr::rename(`P-Value (3-Way Model)` = p) |>
-      as.data.frame()
+    p_values_3way <- mix_aov_3way$anova_table |>
+      as.data.frame() |>
+      tibble::rownames_to_column(var = "Effect") |>
+      dplyr::select(`Effect`, `Pr(>F)`) |>
+      dplyr::rename(`P-Value (3-Way Model)` = `Pr(>F)`)
     
-    p_values_2way <- mix_aov_2way |>
-      dplyr::as_tibble() |>
-      dplyr::select(Effect, p) |>
-      dplyr::rename(`P-Value (2-Way Model)` = p) |>
-      as.data.frame()
+    p_values_2way <- mix_aov_2way$anova_table |>
+      as.data.frame() |>
+      tibble::rownames_to_column(var = "Effect") |>
+      dplyr::select(`Effect`, `Pr(>F)`) |>
+      dplyr::rename(`P-Value (2-Way Model)` = `Pr(>F)`)
   }
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
-  
-  ######## Store results in list format for further use
   merged_summary_list[[i]] <- combined_anova_results
   
   ######## Create Boxplots for numeric variable
@@ -253,11 +263,43 @@ for (i in vars_numeric) {
           legend.position = "bottom",
           strip.text = element_text(size = 12, face = "bold"))
 
+suppressPackageStartupMessages({
+  library("ggplot2")
+  library("ggpattern")
+  require("dplyr", quietly = TRUE)
+  require("maps", quietly = TRUE)
+  require("sf", quietly = TRUE)
+})
 
+create_barplot(data_fct_compete, variable = var)
   ######## Running post-hoc test on continuous variable
-  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, vars = var)
-  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = data_fct_compete, vars = var)
+  p_list_3 <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Treatment|PND), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND))
+  p_list_2 <- emmeans::contrast(emmeans::emmeans(mix_aov_2way, ~ Treatment|PND), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND))
+    
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data_fct_compete, 
+                                                   var = var,
+                                                   p_list_3 = p_list_3[,c("contrast", "p.value", "PND")],
+                                                   p_list_2 = p_list_2[,c("contrast", "p.value", "PND")])
+  post_hoc_h1_list[[i]] <- post_hoc_h1_list[[i]] |>
+      flextable() |>
+      set_table_properties(layout = "autofit")
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = data_fct_compete, 
+                                                   var = var,
+                                                   p_list_3[,c("contrast", "p.value", "PND")],
+                                                   p_list_2[,c("contrast", "p.value", "PND")])
+  post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] |>
+      flextable() |>
+      set_table_properties(layout = "autofit")
 }
+
 ```
 
 ```{r}
@@ -268,12 +310,25 @@ for (i in vars_binary) {
   var <- vars[i]
   model_type = ifelse(i == 9, "glm","glmer")
 
+  data_fct_compete = data |>
+    dplyr::mutate(
+      Treatment = factor(Treatment, levels = c(
+        "Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA",
+        "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE"
+      )),
+      Sex = factor(Sex, levels = c("M", "F")),
+      Litter = factor(`Litter ID`),
+      Animal = factor(`Animal ID`)
+    ) |>
+    dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
+  
   if (model_type == "glm"){
+    data_fct_compete = data_fct_compete |> filter(PND == 12)
     # Fit models
     formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`*`Sex` ")
     formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` ")
-    model1 <- glm(as.formula(formula1), data = data, family = binomial(link = "logit"))
-    model2 <- glm(as.formula(formula2), data = data, family = binomial(link = "logit"))
+    model1 <- glm(as.formula(formula1), data = data_fct_compete, family = binomial(link = "logit"))
+    model2 <- glm(as.formula(formula2), data = data_fct_compete, family = binomial(link = "logit"))
     
     # Summarize and format results
     coef_indices <- if (model_type == "glm") c(1, 2, 4) else c(1, 2, 5)
@@ -293,12 +348,23 @@ for (i in vars_binary) {
     names(anova_result_2) <- c("Effect", "Main Effect Model")
     combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
     merged_summary_list[[i]] <- combined_anova_results
+    
+    p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |>
+      mutate(PND = 12)
+    p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |>
+      mutate(PND = 12)
   } else {
     formula1 <-  paste0("`", var, "` ~ `Treatment` * Sex * `PND` + (1|`Animal ID`)")
     formula2 <-  paste0("`", var, "` ~ `Treatment` + Sex + PND + `Treatment`:PND + Sex:PND + (1|`Animal ID`)")
-    model1 <- glmer(as.formula(formula1), data = data, family = binomial(link = "logit"),
+    model1 <- glmer(as.formula(formula1), data = data_fct_compete, family = binomial(link = "logit"),
                     control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
-    model2 <- glmer(as.formula(formula2), data = data, family = binomial(link = "logit"),
+    model2 <- glmer(as.formula(formula2), data = data_fct_compete, family = binomial(link = "logit"),
                     control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
     anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
     anova_result_1 = anova_result_1[,c(1,4)]
@@ -308,10 +374,21 @@ for (i in vars_binary) {
     names(anova_result_2) <- c("Effect", "P-Value (2-Way Model)")
     combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
     merged_summary_list[[i]] <- combined_anova_results
+    
+    p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment|PND), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |> 
+      mutate(PND = gsub("\\D", "", PND))
+    p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment|PND), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |> 
+      mutate(PND = gsub("\\D", "", PND))
   }
-
+  
   # Create and store bar plot
-  plot_summary <- data |> 
+  plot_summary <- data_fct_compete |> 
     select(Treatment, PND, Sex, !!sym(var)) |> 
     mutate(Treatment = as.factor(Treatment),
            Sex = as.factor(Sex),
@@ -348,42 +425,22 @@ for (i in vars_binary) {
           panel.grid.minor = element_blank(),
           strip.background = element_blank(), 
           strip.text = element_text(face = "bold"))
+
   
-  post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, var = var)
-  post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
-}
-
-# Finalize the tables (updating the raw_pval to hypothesis level fdr)
-fdr_values <- p.adjust(unlist(lapply(post_hoc_h1_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
-fdr_adjusted <- ifelse(fdr_values < 0.05, paste0(fdr_values, "*"), as.character(fdr_values))
-index <- 1
-for (i in seq_along(post_hoc_h1_list)) {
-  if (!is.null(post_hoc_h1_list[[i]])) {
-    n <- nrow(post_hoc_h1_list[[i]])
-    post_hoc_h1_list[[i]]$FDR <- fdr_adjusted[index:(index + n - 1)] 
-    post_hoc_h1_list[[i]] <- post_hoc_h1_list[[i]] |>
-      select(-P_Value_Raw) |> 
-      flextable() |>  
-      set_table_properties(layout = "autofit") 
-    index <- index + n
-  }
-}
-
-# Extract non-null P_Value_Raw values
-
-fdr_values <- p.adjust(unlist(lapply(post_hoc_h2_list, function(df) if (!is.null(df)) df$P_Value_Raw)), method = "fdr") |> round(3)
-fdr_adjusted <- ifelse(fdr_values < 0.05, paste0(fdr_values, "*"), as.character(fdr_values))
-index <- 1
-for (i in seq_along(post_hoc_h2_list)) {
-  if (!is.null(post_hoc_h2_list[[i]])) {
-    n <- nrow(post_hoc_h2_list[[i]])
-    post_hoc_h2_list[[i]]$FDR <- fdr_adjusted[index:(index + n - 1)]
-    post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] %>%
-      select(-P_Value_Raw) |>  
-      flextable() |>  
-      set_table_properties(layout = "autofit") 
-    index <- index + n
-  }
+  post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, 
+                                                   var = var,
+                                                   p_list_3 = p_list_3[,c("contrast", "p.value", "PND")],
+                                                   p_list_2 = p_list_2[,c("contrast", "p.value", "PND")])
+  post_hoc_h1_list[[i]] <- post_hoc_h1_list[[i]] |>
+      flextable() |>
+      set_table_properties(layout = "autofit")
+  post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete,
+                                                   var = var,
+                                                   p_list_3 = p_list_3[,c("contrast", "p.value", "PND")],
+                                                   p_list_2 = p_list_2[,c("contrast", "p.value", "PND")])
+  post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] |>
+      flextable() |>
+      set_table_properties(layout = "autofit")
 }
 ```
 
@@ -548,7 +605,7 @@ for (i in vars_survival) {
 
 In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
 
-We are going to run the analysis using R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+We are going to run the analysis using R-package structure within github. R 4.4.3 is used for the analysis, and we are wrapping all the materials into a R package.
 
 # Data Processing
 
@@ -637,7 +694,38 @@ Additionally, we visualized the estimated hazard ratios along with their 95% con
 
 There is one animal with `Negative Geotaxis` 30.22 seconds, we will just treated it as a censored data point as other 30 seconds.
 
+## Post Hoc Analysis and P-Value Reporting
+
+To evaluate pairwise differences between treatment groups across postnatal day (PND) levels, we performed post hoc tests tailored to the data type. The resulting tables report p-values from both the interaction model (inter) and the additive model (add). For each model, both raw and adjusted p-values were provided, with adjustment performed using the Hochberg method. The p-value adjustment was applied separately within each time period (PND = 4, 8, 12) and within each hypothesis type (primary or secondary).
+
+For categorical outcomes, the proportion difference between groups was computed along with its standard error using the pooled standard error formula for two proportions. A 95% confidence interval for the difference was calculated using the normal approximation.
+
+A custom helper function was used to format and annotate p-values: values less than 0.05 were marked with an asterisk (*), and all values were rounded to three decimal places to enhance readability.
+
+**Note:** Post hoc analysis p-values are derived from the `emmeans` package, which calculates *estimated marginal means* (least-squares means) based on the fitted model. These p-values reflect pairwise comparisons between adjusted group means, accounting for other covariates or factors included in the model. Therefore, they may differ from the p-values reported in the main model summary (e.g., from ANOVA tables or survival model estimates), which test overall effects (e.g., for the entire Treatment factor) rather than specific comparisons. A non-significant main effect does not rule out significant pairwise comparisons between individual groups, and vice versa. Post hoc p-values should be interpreted accordingly, in the context of the specific contrasts being tested.
+
 ## Modeling Result
+
+
+How to Interpret This ANOVA P-Value Table
+This table presents p-values for the main effects and interaction terms from two factorial ANOVA models: a 3-way model, which includes all main effects and interactions up to the 3-way level (e.g., Treatment × Sex × Time), and a 2-way model, which includes only main effects and 2-way interactions. Each row corresponds to a specific effect or interaction (e.g., Treatment, Treatment × Time), and the p-values indicate whether that term has a statistically significant influence on the outcome variable.
+
+Main effects (e.g., Treatment, Sex, Time) test whether each factor has an overall effect on the outcome, regardless of the levels of other factors.
+
+Interaction terms test whether the effect of one factor changes depending on the level of another. For example, a significant Treatment × Time interaction suggests the treatment effect differs across time points.
+
+3-way interactions test whether a 2-way interaction (e.g., Treatment × Time) itself varies across the third factor (e.g., Sex). A non-significant 3-way interaction suggests the simpler 2-way model may be sufficient.
+
+### EXAMPLE - How to interpret the ANOVA table
+
+The main effect of Treatment has a p-value of 0.001 in both the 3-way and 2-way models, indicating a highly statistically significant effect. This means that, regardless of Sex or PND (Postnatal Day), the outcome variable differs significantly across the treatment groups. In other words, the choice of treatment alone has a meaningful impact on the outcome, and this finding is robust across both models. 
+### EXAMPLE - How to interpret the Posthoc table
+
+Post hoc pairwise comparisons were conducted to examine differences between treatment groups at each postnatal day (PND) using chi-squared or Fisher's exact tests, depending on cell sizes. The table reports the proportion differences, standard errors, and 95% confidence intervals for each comparison. For example, at PND 4, the comparison between CRMP1+CRMP2 and the control group (Adjuvant+Saline) yielded a proportion difference of 0.215, with a 95% confidence interval of [0.048, 0.382] and an adjusted p-value of 0.028*, indicating a statistically significant increase in the response for the treatment group. P-values were adjusted using the Bonferroni method to control for multiple comparisons within each time point and hypothesis set. Asterisks next to p-values denote statistical significance at the 0.05 level.
+
+### EXAMPLE - How to interpret the survival table
+
+At postnatal day 12, animals in the LDHA+LDHB+CRMP1+STIP1 group had a hazard ratio of 0.569 compared to the Adjuvant+Saline group. This indicates a 43.1% reduction in the hazard of the event (e.g., avoidance failure, mortality, or whichever survival endpoint you're using), suggesting a potential protective effect of the treatment. The 95% confidence interval ranges from 0.325 to 0.996, and the p-value is 0.048, which is statistically significant at the 0.05 level. This suggests the observed difference is unlikely due to chance.
 
 ```{r anova-tb, results='asis'}
 set_flextable_defaults(
