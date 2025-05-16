@@ -14,6 +14,8 @@ editor_options:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
                flextable, mar4.0)
+fig_n = 0
+tab_n = 0
 
 sd_data = sd_juv |>
   rename(Treatment = Treat) |>
@@ -39,7 +41,7 @@ fit_model <- function(var, formula_str, data, model_type = "lmer") {
 
 # Function to summarize and format model results
 format_summary_lmer <- function(model_summary, column_name) {
-  formatted <- apply(model_summary$coefficients[, c(1,2,4)], 1, function(row) {
+  formatted <- apply(model_summary$coefficients[, c(1,2,5)], 1, function(row) {
     estimate <- round(row[1], 3)
     se <- round(row[2], 3)
     p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
@@ -184,12 +186,14 @@ vars = c("Total duration Non-social (Total)",
          "Total number Play",   # THIS IS LIKELY TO BE 0 INFLATED
          "Total number Grooming Self")
 
-usv_anova_tb <- data.frame(Variables = c("Interaction - Treatment",
-                                         "Interaction - Sex",
-                                         "Interaction - Treatment:Sex", 
-                                         "No Interaction - Treatment",
-                                         "No Interaction - Sex"))
+usv_anova_tb <- data.frame(Variables = c("Interactive - Treatment",
+                                         "Interactive - Sex",
+                                         "Interactive - Treatment:Sex", 
+                                         "Additive - Treatment",
+                                         "Additive - Sex"))
 merged_summary_list <- list()
+post_hoc_h1_list <- list()
+post_hoc_h2_list <- list()
 
 # Main loop
 for (i in 1:4) {
@@ -220,12 +224,26 @@ for (i in 1:4) {
   usv_anova_tb[1:3, var] <- perform_anova(model1)[2:4]
   usv_anova_tb[4:5, var] <- perform_anova(model2)[2:3]
 
-#   emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treatment`,adjust = "none")
-#   usv_tb_contrast = emm_s.t$contrasts %>%
-#     as.data.frame() %>%
-#     select(estimate, p.value) %>%
-#     mutate(across(everything(), ~ round(.x, 3)))
-#   rownames(usv_tb_contrast) <- rownames(emm_s.t$contrasts)
+  
+  p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = 4) |>
+    select(`contrast`, `p.value`, `PND`)
+  p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = 4) |>
+    select(`contrast`, `p.value`, `PND`)
+  
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                   var = var, 
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2) |>
+  select(-PND)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                   var = var, 
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2) |>
+  select(-PND)
 }
 
 # #5 Total number Play - THIS IS a 0 INFLATED VARIABLE
@@ -240,7 +258,24 @@ merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
 merged_summary_list[[5]] <- merged_summary_df
 usv_anova_tb[1:3, vars[5]] <- perform_anova(model1)[2:4]
 usv_anova_tb[4:5, vars[5]] <- perform_anova(model2)[2:3]
-  
+p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+post_hoc_h1_list[[5]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[5], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
+post_hoc_h2_list[[5]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[5], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
 
 # #6 Total number Grooming Self
 formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
@@ -253,6 +288,24 @@ merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
 merged_summary_list[[6]] <- merged_summary_df
 usv_anova_tb[1:3, vars[6]] <- perform_anova(model1)[2:4]
 usv_anova_tb[4:5, vars[6]] <- perform_anova(model2)[2:3]
+p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+post_hoc_h1_list[[6]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[6], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2)|>
+  select(-PND)
+post_hoc_h2_list[[6]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[6], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
 
 usv_anova_tb = usv_anova_tb |> 
   column_to_rownames(var = "Variables") |>
@@ -333,6 +386,16 @@ The regression fitting process followed these steps:
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
 
+## Post Hoc Analysis and P-Value Reporting
+
+To evaluate pairwise differences between treatment groups across postnatal day (PND) levels, we performed post hoc tests tailored to the data type. The resulting tables report p-values from both the interaction model (inter) and the additive model (add). For each model, both raw and adjusted p-values were provided, with adjustment performed using the Hochberg method. The p-value adjustment was applied separately within each time period (PND = 4, 8, 12) and within each hypothesis type (primary or secondary).
+
+For categorical outcomes, the proportion difference between groups was computed along with its standard error using the pooled standard error formula for two proportions. A 95% confidence interval for the difference was calculated using the normal approximation.
+
+A custom helper function was used to format and annotate p-values: values less than 0.05 were marked with an asterisk (*), and all values were rounded to three decimal places to enhance readability.
+
+**Note:** Post hoc analysis p-values are derived from the `emmeans` package, which calculates *estimated marginal means* (least-squares means) based on the fitted model. These p-values reflect pairwise comparisons between adjusted group means, accounting for other covariates or factors included in the model. Therefore, they may differ from the p-values reported in the main model summary (e.g., from ANOVA tables or survival model estimates), which test overall effects (e.g., for the entire Treatment factor) rather than specific comparisons. A non-significant main effect does not rule out significant pairwise comparisons between individual groups, and vice versa. Post hoc p-values should be interpreted accordingly, in the context of the specific contrasts being tested.
+
 ## ANOVA Table
 
 Type III ANOVA table (Table \@ref(tab:anova-tb)) display the anova p-values for each variables at each models, and below is the explanation of each model:
@@ -364,24 +427,31 @@ usv_anova_tb |>
     j = 2,
     width = 1.16
   )
+tab_n = tab_n + 1
+cat(paste0("ANOVA P-Value Table of USV Object (Juveniles) in the Three Different Model ",
+           "(Interaction, Additive, and Basic)\n"))
 ```
 
-## Estimation Table
+## Modeling Result
 
 The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
+
+### EXAMPLE - How to interpret the ANOVA table
+
+The main effect of Treatment has a p-value of 0.001 in both the 3-way and 2-way models, indicating a highly statistically significant effect. This means that, regardless of Sex or PND (Postnatal Day), the outcome variable differs significantly across the treatment groups. In other words, the choice of treatment alone has a meaningful impact on the outcome, and this finding is robust across both models. 
+
+### EXAMPLE - How to interpret the Posthoc table
+
+Post hoc pairwise comparisons were conducted to examine differences between treatment groups at each postnatal day (PND) using chi-squared or Fisher's exact tests, depending on cell sizes. The table reports the proportion differences, standard errors, and 95% confidence intervals for each comparison. For example, at PND 4, the comparison between CRMP1+CRMP2 and the control group (Adjuvant+Saline) yielded a proportion difference of 0.215, with a 95% confidence interval of [0.048, 0.382] and an adjusted p-value of 0.028*, indicating a statistically significant increase in the response for the treatment group. P-values were adjusted using the Bonferroni method to control for multiple comparisons within each time point and hypothesis set. Asterisks next to p-values denote statistical significance at the 0.05 level.
 
 ```{r results='asis'}
 # Loop to generate flextables
 for (i in 1:length(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
   merged_summary_list[[i]] |>
     as.data.frame() |>
     tibble::rownames_to_column("Variable") |>
     flextable::flextable() |>
-    flextable::set_caption(
-      caption = paste0(
-        "Model Estimation Result (Juveniles) in the Model - ", vars[i]
-      )
-    ) |>
     flextable::width(
       width = 1.15
     ) |>
@@ -390,6 +460,29 @@ for (i in 1:length(vars)) {
       width = 1.5
     ) |>
     flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, 
+             ": Model Estimation Result (Juveniles) in the Model - ", 
+             vars[i] ,"\n"))
+  
+  post_hoc_h1_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, 
+             ": Post-hoc test for comparing the control null group (Adjuvant+Saline) to treatments with a control 95% family-wise confidence level - ", 
+             vars[i] ,"\n"))
 
+  post_hoc_h2_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
 }
 ```

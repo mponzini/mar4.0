@@ -4,7 +4,7 @@ output:
   bookdown::word_document2:
     number_section: false
     reference_docx: docx_landscape.docx
-date: "2025-03-24"
+date: "2025-05-08"
 editor_options: 
   chunk_output_type: console
 ---
@@ -152,30 +152,32 @@ for (i in seq_along(vars)) {
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
 
+  
   # Perform 3-way ANOVA (Treatment * Sex * PND)
-  mix_aov_3way <- rstatix::anova_test(
-    dv = !!sym(var), 
-    wid = Animal, 
-    between = c(Treatment, Sex), 
-    within = PND, 
-    data = usv_fct_compete, 
-    type = 3
+  mix_aov_3way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * Sex * PND + Error(Animal/PND)")),
+  data = usv_fct_compete,
+  type = 3
   )
-
+  
   # Perform 2-way ANOVA (Treatment * PND)
-  mix_aov_2way <- rstatix::anova_test(
-    dv = !!sym(var), 
-    wid = Animal, 
-    between = c(Treatment), 
-    within = PND,
-    covariate = Sex,
-    data = usv_fct_compete, 
-    type = 3
+  mix_aov_2way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * PND + Sex * PND + Error(Animal/PND)")),
+  data = usv_fct_compete,
+  type = 3
   )
-
-    # Extract p-values from ANOVA tests and merge them into one table
-  p_values_3way <- mix_aov_3way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (3-Way Model; Sex as Effect Modifier)` = p)
-  p_values_2way <- mix_aov_2way$ANOVA[,c("Effect","p")] |> dplyr::rename(`P-Value (2-Way Model; Sex as Confounder)` = p)
+  
+  # Extract p-values from ANOVA tests and merge them into one table
+  p_values_3way <- mix_aov_3way$anova_table |>
+    as.data.frame() |>
+    tibble::rownames_to_column(var = "Effect") |>
+    dplyr::select(`Effect`, `Pr(>F)`) |>
+    dplyr::rename(`P-Value (3-Way Model)` = `Pr(>F)`)
+  p_values_2way <- mix_aov_2way$anova_table |>
+    as.data.frame() |>
+    tibble::rownames_to_column(var = "Effect") |>
+    dplyr::select(`Effect`, `Pr(>F)`) |>
+    dplyr::rename(`P-Value (2-Way Model)` = `Pr(>F)`)
   combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
   
   # Store results in list format for further use
@@ -212,8 +214,21 @@ for (i in seq_along(vars)) {
           strip.text = element_text(size = 12, face = "bold"))
   
   ######## Running post-hoc test on continuous variable
-  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, vars = var)
-  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = usv_fct_compete, vars = var)
+  p_list_3 <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Treatment|PND), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND)) |>
+    select(`contrast`, `p.value`, `PND`)
+  p_list_2 <- emmeans::contrast(emmeans::emmeans(mix_aov_2way, ~ Treatment|PND), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND)) |>
+    select(`contrast`, `p.value`, `PND`)
+  
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = usv_fct_compete, var = var, 
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = usv_fct_compete, var = var,
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2)
 }
 
 ```
@@ -221,9 +236,9 @@ for (i in seq_along(vars)) {
 
 # Background
 
-In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
+In MAR 4.0 project, this section we will conduct analysis on the USV data and report analysis results.
 
-We are going to run the analysis using R-package structure within github. R 4.4.1 is used for the analysis, and we are wrapping all the materials into a R package.
+We are going to run the analysis using R-package structure within github. R 4.4.3 is used for the analysis, and we are wrapping all the materials into a R package.
 
 
 # Data Processing
@@ -238,6 +253,7 @@ The all interested variables were summarized by Treatment group overall, stratif
 
 ```{r summary-tbl, results='asis'}
 for (i in seq_along(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
   summary_list <- summary_tbls(usv, vars[i])
   
   purrr::walk2(summary_list, vars[i], function(tbl, var_name) {
@@ -269,6 +285,16 @@ We fitted 2 models as follows in order:
 
 At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report’s delivery format.
 
+## Post Hoc Analysis and P-Value Reporting
+
+To evaluate pairwise differences between treatment groups across postnatal day (PND) levels, we performed post hoc tests tailored to the data type. The resulting tables report p-values from both the interaction model (inter) and the additive model (add). For each model, both raw and adjusted p-values were provided, with adjustment performed using the Hochberg method. The p-value adjustment was applied separately within each time period (PND = 4, 8, 12) and within each hypothesis type (primary or secondary).
+
+For categorical outcomes, the proportion difference between groups was computed along with its standard error using the pooled standard error formula for two proportions. A 95% confidence interval for the difference was calculated using the normal approximation.
+
+A custom helper function was used to format and annotate p-values: values less than 0.05 were marked with an asterisk (*), and all values were rounded to three decimal places to enhance readability.
+
+**Note:** Post hoc analysis p-values are derived from the `emmeans` package, which calculates *estimated marginal means* (least-squares means) based on the fitted model. These p-values reflect pairwise comparisons between adjusted group means, accounting for other covariates or factors included in the model. Therefore, they may differ from the p-values reported in the main model summary (e.g., from ANOVA tables or survival model estimates), which test overall effects (e.g., for the entire Treatment factor) rather than specific comparisons. A non-significant main effect does not rule out significant pairwise comparisons between individual groups, and vice versa. Post hoc p-values should be interpreted accordingly, in the context of the specific contrasts being tested.
+
 ## ANOVA Table
 
 Type III ANOVA table displays the anova p-values for each variable in each model, and below is the explanation of each model:
@@ -287,6 +313,16 @@ Additionally, we use boxplots for intuitive visualizations for cross-sectional p
 Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two sets of post-hoc tests for each variable. The first set is all comparisons between the control group and each treatment group, and the second set is pairwise comparisons across all treatment groups. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
 
 
+## Modeling Result
+
+### EXAMPLE - How to interpret the ANOVA table
+
+The main effect of Treatment has a p-value of 0.001 in both the 3-way and 2-way models, indicating a highly statistically significant effect. This means that, regardless of Sex or PND (Postnatal Day), the outcome variable differs significantly across the treatment groups. In other words, the choice of treatment alone has a meaningful impact on the outcome, and this finding is robust across both models. 
+
+### EXAMPLE - How to interpret the Posthoc table
+
+Post hoc pairwise comparisons were conducted to examine differences between treatment groups at each postnatal day (PND) using chi-squared or Fisher's exact tests, depending on cell sizes. The table reports the proportion differences, standard errors, and 95% confidence intervals for each comparison. For example, at PND 4, the comparison between CRMP1+CRMP2 and the control group (Adjuvant+Saline) yielded a proportion difference of 0.215, with a 95% confidence interval of [0.048, 0.382] and an adjusted p-value of 0.028*, indicating a statistically significant increase in the response for the treatment group. P-values were adjusted using the Bonferroni method to control for multiple comparisons within each time point and hypothesis set. Asterisks next to p-values denote statistical significance at the 0.05 level.
+
 ```{r anova-tb, results='asis'}
 set_flextable_defaults(
   font.family = "Arial",  
@@ -296,6 +332,7 @@ set_flextable_defaults(
 
 # Loop and show all the table & figures
 for (i in seq_along(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
   merged_summary_list[[i]] |>
     as.data.frame(row.names = NULL) |>
     flextable::flextable() |>
