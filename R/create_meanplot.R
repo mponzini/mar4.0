@@ -50,6 +50,7 @@ create_meanplot <- function(
 
   # Build base plot
   p <- ggplot2::ggplot(summary_data, ggplot2::aes(x = !!treatment_sym, y = mean)) +
+    ggplot2::geom_point() +
     ggplot2::geom_errorbar(
       ggplot2::aes(ymin = ci_lower, ymax = ci_upper),
       width = 0.2
