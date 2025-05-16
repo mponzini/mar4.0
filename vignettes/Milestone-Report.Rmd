@@ -263,15 +263,6 @@ for (i in vars_numeric) {
           legend.position = "bottom",
           strip.text = element_text(size = 12, face = "bold"))
 
-suppressPackageStartupMessages({
-  library("ggplot2")
-  library("ggpattern")
-  require("dplyr", quietly = TRUE)
-  require("maps", quietly = TRUE)
-  require("sf", quietly = TRUE)
-})
-
-create_barplot(data_fct_compete, variable = var)
   ######## Running post-hoc test on continuous variable
   p_list_3 <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Treatment|PND), 
                                 method = "pairwise", 
@@ -298,6 +289,18 @@ create_barplot(data_fct_compete, variable = var)
   post_hoc_h2_list[[i]] <- post_hoc_h2_list[[i]] |>
       flextable() |>
       set_table_properties(layout = "autofit")
+  
+  
+  create_barplot(data_fct_compete, 
+               variable = var, 
+               contrast_p = p_list_3 |> filter(PND == 4))
+  
+  create_boxplot(data_fct_compete, 
+               variable = var, 
+               contrast_p = p_list_3 |> filter(PND == 4))
+  create_meanplot(data_fct_compete, 
+               variable = var, 
+               contrast_p = p_list_3 |> filter(PND == 4))
 }
 
 ```

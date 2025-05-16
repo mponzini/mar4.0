@@ -5,6 +5,7 @@
 #' @param variable Outcome variable to plot
 #' @param treatment Treatment variable name to summarize `variable` by
 #' @param strata Optional variable to stratify figure by
+#' @param contrast_p Data frame contain contrast from emmeans
 #' @param xlab Character string to label x-axis. Defaults to `treatment`
 #' @param ylab Character string to label y-axis. Defaults to `variable`
 #' @export
@@ -13,6 +14,7 @@ create_barplot <- function(
     variable,
     treatment = "Treatment",
     strata = NULL,
+    contrast_p = NULL,
     xlab = treatment,
     ylab = variable
 ) {
@@ -40,7 +42,7 @@ create_barplot <- function(
 
   # Get unique treatment levels
   treatment_levels <- unique(summary_data[[treatment]])
-  max_y <- max(summary_data$mean_value + summary_data$se, na.rm = TRUE) * 1.5
+  max_y <- max(summary_data$mean_value + summary_data$se, na.rm = TRUE)
 
   # Assign unique patterns
   pattern_options <- c("none", "stripe", "crosshatch", "circle", "pch")
@@ -96,12 +98,29 @@ create_barplot <- function(
         pattern_angle = 45
       ))
     ) +
-    ggplot2::scale_y_continuous(expand = c(0, 0), limits = c(0, max_y))
+    ggplot2::scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
 
   # Add faceting if applicable
   if (!is.null(strata)) {
     strata_sym <- rlang::sym(strata)
     p <- p + ggplot2::facet_wrap(ggplot2::vars(!!strata_sym))
+  }
+
+  # Add significant bars if p-value from contrast are provided
+  if (!is.null(contrast_p)) {
+    p_values <- get_significant_p_value(contrast_table = contrast_p,
+                                        y_start = max_y * 1.05,
+                                        y_step = max_y/50)
+    suppressMessages(
+      p <- p +
+        ggplot2::scale_y_continuous(expand = c(0, 0), limits = c(0, max(p_values$y.position)*1.1)) +
+        ggpubr::stat_pvalue_manual(
+          p_values,
+          label = "p.signif",
+          tip.length = 0.01,
+          bracket.size = 0.6
+        )
+    )
   }
 
   # Add reference line for "Adjuvant+Saline" if it exists
@@ -119,3 +138,5 @@ create_barplot <- function(
 
   return(p)
 }
+
+
