@@ -4,14 +4,20 @@
 \alias{run_posthoc_test_num_h1}
 \title{Posthoc Test Helper Function}
 \usage{
-run_posthoc_test_num_h1(data, vars, control_group = "Adjuvant+Saline")
+run_posthoc_test_num_h1(
+  data,
+  var,
+  p_list_3,
+  p_list_2,
+  control_group = "Adjuvant+Saline"
+)
 }
 \arguments{
+\item{var}{Response variable}
+
 \item{control_group}{Level of the control group}
 
 \item{dataset}{Data frame of the data}
-
-\item{var}{Response variable}
 }
 \value{
 Return the table of posthoc estimation table

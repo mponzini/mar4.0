@@ -1,0 +1,680 @@
+---
+title: "MAR 4.0 - Milestones"
+output: 
+  bookdown::word_document2:
+    number_section: false
+    reference_docx: docx_landscape.docx
+date: "2025-06-03"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
+               flextable, rstatix, ggpubr, ggbiplot, factoextra, survival, 
+               survminer, ggplot2, stringr, mar4.0, patchwork)
+knitr::opts_chunk$set(fig.width=14, fig.height=8)
+set_flextable_defaults(
+  font.family = "Arial",
+  font.size = 8,
+  theme_fun = theme_vanilla
+)
+fig_n = 0
+tab_n = 0
+```
+
+```{r}
+###################### Functions to generate the table and models
+
+# Loop through each variable
+fit_model <- function(var, formula_str, data, model_type = "lmer") {
+  if (model_type == "glmer") {
+    return(glm(as.formula(formula_str), data = data, family = binomial(link = "logit")))
+  } else {
+    return(lmerTest::lmer(as.formula(formula_str), data = data))
+  }
+}
+
+# Function to summarize and format model results
+format_summary <- function(model_summary, coef_indices, column_name) {
+  formatted <- apply(model_summary$coefficients[, coef_indices], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
+    paste0(estimate, " ±", se, " (p", p_value, ")")
+  })
+  formatted_summary <- as.data.frame(formatted)
+  colnames(formatted_summary) <- c(column_name)
+  return(formatted_summary)
+}
+
+# Function to combine different model estimates into one table and ordered by the summary_fullmodel (for the same variable).
+create_combined_estimate <- function(summary_full, ...) {
+  summaries <- list(summary_full, ...)
+  merged_data <- summaries[[1]]
+  
+  for (i in 2:length(summaries)) {
+    merged_data <- full_join(merged_data, summaries[[i]], by = "Effect")
+  }
+  
+  # Convert numeric columns (p-values) to 4 decimal places (non-scientific)
+  numeric_cols <- sapply(merged_data, is.numeric)
+  merged_data[numeric_cols] <- lapply(merged_data[numeric_cols], function(x) {
+    ifelse(is.na(x), "", as.character(format(round(x, 4), nsmall = 4, scientific = FALSE)))
+  })
+  
+  return(merged_data)
+}
+
+# Function to return the gtsummary-table by input dataset and outcome
+summary_tbls <- function(
+    dataset, outcome
+) {
+
+  tbl_male <- dataset |>
+    dplyr::filter(Sex == "M") |>
+    dplyr::select(Treatment, PND, dplyr::all_of(outcome)) |>
+    gtsummary::tbl_strata(
+      strata = PND,
+      .tbl_fun = ~ .x |>
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = where(is.numeric) ~ "continuous2",
+          statistic = gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+          ) 
+        ) |> gtsummary::add_overall(),
+      .combine_with = "tbl_stack"
+    ) |>
+    gtsummary::modify_spanning_header(
+      gtsummary::all_stat_cols() ~ "Males"
+    )
+
+  tbl_female <- dataset |>
+    dplyr::filter(Sex == "F") |>
+    dplyr::select(Treatment, PND, dplyr::all_of(outcome)) |>
+    gtsummary::tbl_strata(
+      strata = PND,
+      .tbl_fun = ~ .x |>
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = where(is.numeric) ~ "continuous2",
+          statistic = gtsummary::all_continuous2() ~ c(
+            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+          )
+        ) |> gtsummary::add_overall(),
+      .combine_with = "tbl_stack"
+    ) |>
+    gtsummary::modify_spanning_header(
+      gtsummary::all_stat_cols() ~ "Females"
+    )
+
+  ans <- list(
+    "males" = tbl_male,
+    "females" = tbl_female
+  )
+
+  return(ans)
+}
+```
+
+```{r}
+###################### Run the model and create plot for numeric variables
+
+# Ensure PND is a factor with reference level set to "4"
+data = milestones |>
+  mutate(`Animal ID` = ifelse(is.na(`Animal ID`),paste0(`Litter ID`,"_99"),`Animal ID`),
+          Startle = ifelse(Startle=="N",0,1),
+         `Forelimb Grasp` = ifelse(`Forelimb Grasp`=="N",0,1),
+         PND = relevel(factor(PND), ref = "4"),
+         `Circle Traverse 30s` = ifelse(`Circle Traverse`<30,1,0) |> as.factor(),
+         `Negative Geotaxis 30s` = ifelse(`Negative Geotaxis`<30,1,0)|> as.factor(),
+         `Cliff Avoidance 30s` = ifelse(`Cliff Avoidance`<30,1,0)|> as.factor(),
+         `Log2 Righting Reflex` = log2(`Righting Reflex`))
+
+
+# Variables to analyze, including Count
+vars = names(data)[11:24]
+vars = vars[c(1:5,14,6,11,7,12,8,13,9)]
+vars_numeric = c(1:6)
+vars_survival = c(7,9,11)
+vars_binary = c(8,10,12,13)
+
+# Create ANOVA results table
+merged_summary_list <- list()
+plot_list <- list()
+post_hoc_h1_list <- list()
+post_hoc_h2_list <- list()
+
+# Main loop over variables
+for (i in vars_numeric) {
+  var <- vars[i]
+  # Data preparation (ensure complete cases)
+  data_fct_compete <- data |>
+    dplyr::mutate(
+      Treatment = factor(Treatment, levels = c(
+        "Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA",
+        "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE"
+      )),
+      Sex = factor(Sex, levels = c("M", "F")),
+      Litter = factor(`Litter ID`),
+      Animal = factor(`Animal ID`),
+      PND = factor(PND, levels = c(4, 8, 12), ordered = TRUE)
+    ) |>
+    dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
+  
+  # If working on the variable with 30s max recording, trimming those equal to 30s
+  # Also check low counting PND and exclude those
+  if (var %in% c("Circle Traverse","Negative Geotaxis","Cliff Avoidance")){
+    data_fct_compete <- data_fct_compete |>
+      filter(!is.na(!!sym(var)) & !!sym(var) < 30)
+    
+    exclude_pnd <- data_fct_compete |>
+      group_by(PND, Treatment, Sex) |>
+      summarise(n = n(), .groups = "drop") |>
+      filter(n <= 1) |>
+      pull(PND) |>
+      unique()
+
+    data_fct_compete <- data_fct_compete |>
+      filter(!PND %in% exclude_pnd)
+  }
+
+  
+  # Perform 3-way ANOVA (Treatment * Sex * PND)
+  mix_aov_3way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * Sex * PND + Error(Animal/PND)")),
+  data = data_fct_compete,
+  type = 3
+  )
+  
+  # Perform 2-way ANOVA (Treatment * PND)
+  mix_aov_2way <- afex::aov_car(
+  formula = as.formula(paste0("`", var, "` ~ Treatment * PND + Sex * PND + Error(Animal/PND)")),
+  data = data_fct_compete,
+  type = 3
+  )
+
+  # Extract p-values from ANOVA tests and merge them into one table
+  if (!is.null(mix_aov_3way$ANOVA)) {
+    p_values_3way <- mix_aov_3way$ANOVA[, c("Effect", "p.value")] |>
+      dplyr::rename(`P-Value (3-Way Model)` = p.value)
+    
+    p_values_2way <- mix_aov_2way$ANOVA[, c("Effect", "p.value")] |>
+      dplyr::rename(`P-Value (2-Way Model)` = p.value)
+  } else {
+    p_values_3way <- mix_aov_3way$anova_table |>
+      as.data.frame() |>
+      tibble::rownames_to_column(var = "Effect") |>
+      dplyr::select(`Effect`, `Pr(>F)`) |>
+      dplyr::rename(`P-Value (3-Way Model)` = `Pr(>F)`)
+    
+    p_values_2way <- mix_aov_2way$anova_table |>
+      as.data.frame() |>
+      tibble::rownames_to_column(var = "Effect") |>
+      dplyr::select(`Effect`, `Pr(>F)`) |>
+      dplyr::rename(`P-Value (2-Way Model)` = `Pr(>F)`)
+  }
+  combined_anova_results <- create_combined_estimate(p_values_3way, p_values_2way)
+  merged_summary_list[[i]] <- combined_anova_results
+  
+  ######## Running post-hoc test on continuous variable
+  p_list_3 <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Treatment|PND), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND))
+  p_list_2 <- emmeans::contrast(emmeans::emmeans(mix_aov_2way, ~ Treatment|PND), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND))
+  
+  p_list_sex <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Sex|PND * Treatment), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = gsub("\\D", "", PND))
+    
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(
+    data = data_fct_compete, 
+    var = var,
+    p_list_3 = p_list_3[,c("contrast", "p.value", "PND")],
+    p_list_2 = p_list_2[,c("contrast", "p.value", "PND")]) |> 
+    make_posthoc_flextable(metric = "Mean_Diff")
+
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(
+    data = data_fct_compete, 
+    var = var,
+    p_list_3[,c("contrast", "p.value", "PND")],
+    p_list_2[,c("contrast", "p.value", "PND")]) |> 
+    make_posthoc_flextable(metric = "Mean_Diff")
+  
+  plot_list[[i]] <- create_meanplot(
+    dataset = data_fct_compete,
+    variable = var, 
+    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
+}
+```
+
+```{r}
+###################### Run the model and create plot for binary variables
+merged_estimate_list = list()
+
+for (i in vars_binary) {
+  var <- vars[i]
+  model_type = ifelse(i == 13, "glm","glmer")
+
+  data_fct_compete = data |>
+    dplyr::mutate(
+      Treatment = factor(Treatment, levels = c(
+        "Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA",
+        "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE"
+      )),
+      Sex = factor(Sex, levels = c("M", "F")),
+      Litter = factor(`Litter ID`),
+      Animal = factor(`Animal ID`)
+    ) |>
+    dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
+  
+  if (model_type == "glm"){
+    data_fct_compete = data_fct_compete |> filter(PND == 12)
+    # Fit models
+    formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`*`Sex` ")
+    formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` ")
+    model1 <- glm(as.formula(formula1), data = data_fct_compete, family = binomial(link = "logit"))
+    model2 <- glm(as.formula(formula2), data = data_fct_compete, family = binomial(link = "logit"))
+    
+    # Summarize and format results
+    coef_indices <- if (model_type == "glm") c(1, 2, 4) else c(1, 2, 5)
+    summary1 <- format_summary(summary(model1), coef_indices, "Two Vars Model") |> tibble::rownames_to_column()
+    names(summary1) <- c("Effect", names(summary1)[2])
+    summary2 <- format_summary(summary(model2), coef_indices, "Main Effect Model")|> tibble::rownames_to_column()
+    names(summary2) <- c("Effect", names(summary2)[2])
+    merged_estimate <- create_combined_estimate(summary_full = summary1, summary2)
+    merged_estimate_list[[i]] <- merged_estimate
+    
+    # Perform ANOVA
+    anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_1 = anova_result_1[,c(1,4)]
+    names(anova_result_1) <- c("Effect", "Two Vars Model")
+    anova_result_2 = Anova(model2, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_2 = anova_result_2[,c(1,4)]
+    names(anova_result_2) <- c("Effect", "Main Effect Model")
+    combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
+    merged_summary_list[[i]] <- combined_anova_results
+    
+    p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |>
+      mutate(PND = 12)
+    p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |>
+      mutate(PND = 12)
+  } else {
+    formula1 <-  paste0("`", var, "` ~ `Treatment` * Sex * `PND` + (1|`Animal ID`)")
+    formula2 <-  paste0("`", var, "` ~ `Treatment` + Sex + PND + `Treatment`:PND + Sex:PND + (1|`Animal ID`)")
+    model1 <- glmer(as.formula(formula1), data = data_fct_compete, family = binomial(link = "logit"),
+                    control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
+    model2 <- glmer(as.formula(formula2), data = data_fct_compete, family = binomial(link = "logit"),
+                    control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
+    anova_result_1 = Anova(model1, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_1 = anova_result_1[,c(1,4)]
+    names(anova_result_1) <- c("Effect", "P-Value (3-Way Model)")
+    anova_result_2 = Anova(model2, type = "III") |> as.data.frame() |> tibble::rownames_to_column("Effect")
+    anova_result_2 = anova_result_2[,c(1,4)]
+    names(anova_result_2) <- c("Effect", "P-Value (2-Way Model)")
+    combined_anova_results <- create_combined_estimate(summary_full = anova_result_1, anova_result_2)
+    merged_summary_list[[i]] <- combined_anova_results
+    
+    p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment|PND), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |> 
+      mutate(PND = gsub("\\D", "", PND))
+    p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment|PND), 
+                                  method = "pairwise", 
+                                  adjust = "none") |>
+      as.data.frame() |> 
+      mutate(PND = gsub("\\D", "", PND))
+  }
+
+  post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(
+    data = data_fct_compete, 
+    var = var,
+    p_list_3 = p_list_3[,c("contrast", "p.value", "PND")],
+    p_list_2 = p_list_2[,c("contrast", "p.value", "PND")]) |> 
+    make_posthoc_flextable(metric = "Prop_Diff")
+
+  post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(
+    data = data_fct_compete, 
+    var = var,
+    p_list_3[,c("contrast", "p.value", "PND")],
+    p_list_2[,c("contrast", "p.value", "PND")]) |> 
+    make_posthoc_flextable(metric = "Prop_Diff")
+  
+  plot_list[[i]] <- create_meanplot(
+    dataset = data_fct_compete,
+    variable = var, 
+    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
+}
+```
+
+```{r}
+###################### Run the model and create plot for survival variables
+merged_forest_plot = list()
+plot_list_km_curve = list()
+
+for (i in vars_survival) {
+  var <- vars[i]
+
+  data_survival = data[,c("Animal ID","Litter ID","PND", var, "Treatment","Sex")] |>
+    mutate(
+      censor = ifelse(!!sym(var) >= 30, 0, 1) |> as.character() |> as.numeric(),
+      PND = factor(as.character(PND), levels = c("4", "8", "12")),
+      Treatment = factor(Treatment,
+                         levels = c("Adjuvant+Saline", "CRMP1+CRMP2",
+                                    "CRMP1+GDA", "LDHA+LDHB+CRMP1+STIP1", "STIP1+NSE")),
+      Sex = factor(Sex, levels = c("M", "F")),
+      `Litter ID` = as.factor(`Litter ID`)
+      ) |> 
+    na.omit()
+
+  # Run Cox model and extract tidy summary with exponentiation coefficients (hazard ratios)
+  pnd_results <- list()
+  pnd_km_plots <- list()
+  for (pnd_val in c("4", "8", "12")) {
+    data_subset <- data_survival |> 
+      filter(PND == pnd_val) |> 
+      mutate(
+        Treatment = forcats::fct_recode(
+          Treatment,
+          "4+Drug+Combo" = "LDHA+LDHB+CRMP1+STIP1"
+          )
+        )
+    if (nrow(data_subset) > 0) {  # Only fit if there's data
+      formula_fit <- paste0("Surv(`", var, "`, censor) ~ Treatment + Sex + frailty(`Litter ID`)") |>
+        as.formula()
+      cox_fit <- coxph(formula_fit, data = data_subset)
+      cox_tidy <- tidy(cox_fit, 
+                       exponentiate = TRUE, 
+                       conf.int = TRUE) |>
+        filter(!str_detect(term, "Litter ID"))  # remove frailty term
+
+      # Rename term nicely
+      cox_tidy$term <- c("CRMP1+CRMP2 vs Adjuvant+Saline",
+                         "CRMP1+GDA vs Adjuvant+Saline",
+                         "LDHA+LDHB+CRMP1+STIP1 vs Adjuvant+Saline",
+                         "STIP1+NSE vs Adjuvant+Saline",
+                         "F vs M")
+
+      # Add PND column
+      cox_tidy <- cox_tidy |>
+        transmute(
+          PND = pnd_val,
+          Term = term,
+          HR = round(estimate, 3),
+          `Std. Error` = round(std.error, 3),
+          `P-value` = ifelse(p.value < 0.001, "<0.001", round(p.value, 3)),
+          `95% CI Lower` = round(conf.low, 3),
+          `95% CI Upper` = round(conf.high, 3)
+        )
+
+      pnd_results[[pnd_val]] <- cox_tidy
+    }
+  }
+  # combine PND 4/8/12 results into one table
+  merged_summary_list[[i]] <- bind_rows(pnd_results)
+
+  #post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(data = data_fct_compete, var = var)
+  #post_hoc_h2_list[[i]] <- run_posthoc_test_cat_h2(data = data_fct_compete, var = var)
+  
+  # Draw forest plot ("Hazard Ratios with 95% Confidence Intervals")
+  cox_plot_data <- merged_summary_list[[i]] |>
+    dplyr::mutate(HR = ifelse(is.na(HR),1,HR),
+                  lower = ifelse(is.na(`95% CI Lower`),1,`95% CI Lower`),
+                  upper = ifelse(is.na(`95% CI Upper`),1,`95% CI Upper`),
+                  PND_label = factor(paste0(PND, "th Week"),levels = paste0(c(4, 8, 12), "th Week"))
+           )|>
+    dplyr::filter(Term != "F vs M")
+  
+  plot_list[[i]] <- ggplot(cox_plot_data, aes(x = HR, y = reorder(Term, HR))) +
+    geom_point(size = 3, color = "darkblue") +
+    geom_errorbarh(aes(xmin = `95% CI Lower`, xmax = `95% CI Upper`), height = 0.2, color = "darkblue") +
+    geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+    scale_x_log10() +
+    labs(
+      x = "Hazard Ratio (log scale)",
+      y = ""
+    ) +
+    facet_wrap(~ PND_label, ncol = 1, scales = "free_y") +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      strip.text = element_text(face = "bold", size = 14)
+    )
+  
+  
+  # Get the final posthoc table to report
+  
+  post_hoc_h1_list[[i]] <- merged_summary_list[[i]] |>
+    filter(Term != "F vs M") |>
+    mutate(Variable = var) |>
+    dplyr::select(Variable, PND, Term, HR, `Std. Error`, `P-value`) |>
+    dplyr::rename(
+      Group_Comparison = Term,
+      HR = HR,
+      SE = `Std. Error`,
+      p_value = `P-value`
+    ) |>
+    dplyr::mutate(Group_Comparison = stringr::str_replace_all(Group_Comparison, " vs ", "-")) |>
+    dplyr::group_by(PND) |>
+    dplyr::mutate(
+      p_inter_adj = p.adjust(as.numeric(p_value), method = "hochberg"),
+      HR = tidyr::replace_na(as.numeric(HR), 1),
+      p_inter_adj = tidyr::replace_na(as.numeric(p_inter_adj), 1)
+      ) |>
+    dplyr::ungroup() |>
+    make_posthoc_flextable(metric = "HR")
+}
+```
+
+# Background
+
+In MAR 4.0 project, this section we will conduct analysis on the milestone data and report analysis results.
+
+We are going to run the analysis using R-package structure within github. R 4.4.3 is used for the analysis, and we are wrapping all the materials into a R package.
+
+# Data Processing
+
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with total observations of `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> length()`, and total number of animals `r milestones |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`.
+
+The interested variables at milestones data are: `r paste(vars, collapse = ", ")`.
+
+The `Startle` and `Forelimb Grasp` variables were converted to binary (yes/no of performance) for analysis.
+
+# Summary statistics
+
+The all interested variables were summarized by Treatment group overall, stratified by Time and Sex.
+
+```{r summary-tbl, results='asis'}
+for (i in seq_along(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
+  summary_list <- summary_tbls(data, vars[i])
+  
+  purrr::walk2(summary_list, vars[i], function(tbl, var_name) {
+    tbl |>
+      gtsummary::as_flex_table() |>
+      flextable::width(width = 1.15) |>
+      flextable::width(j = 1, width = 1.16) |>
+      flextable::flextable_to_rmd()
+    
+    tab_n <<- tab_n + 1  
+    cat(paste0("\nTable ", tab_n, 
+               ": Summary of ", 
+               var_name, 
+               " by Treatment Groups with Time Stratification (4, 8, and 12th week).\n\n"))
+  })
+}
+```
+
+# Model Results
+
+To evaluate differences in mean milestone measures between treatments over time, we conducted repeated measures ANOVA (or logistic regression for a cross-sectional categorical milestone measure), incorporating animals as a random effect. We fitted model as follow:
+
+-   Fit the 3-way interaction ANOVA model: Begin with a 3-way interaction model with the main effects of time, treatment (trt), and sex, their 2-way interactions and the three-way interaction of all three variables. This model assumes sex as an effect modifier.
+
+Additionally, for binary outcomes (Startle), we use ordinary logistic regression to evaluate the effect on the 12th week, this is because no animal has Startle at the 4th and 8th week (this is non-repeated measure). Forelimb Grasp is no evaluated because no animal has Startle at any time point.
+
+We also dichotomized three variables (`Circle Traverse`, `Negative Geotaxis`, and `Cliff Avoidance`) as if the animal achieved the milestone within 30 seconds. Those three variables are evaluated in both survival and binary variable version, we suggest to report the survival version and use binary as reference if needed.
+
+At this stage, p-value adjustments are applied to all result. Each group of p-value adjustment are grouping within each variable of outcome, PND, and primary/secondary hypothesis; for example, one p-value adjustment use Hochberg method on Belly temperature and applied to only between all treatment groups compared to control group, at PND = 4.
+
+## ANOVA Table
+
+Type III ANOVA table displays the anova p-values for each variable in each model, and below is the explanation of the model:
+
+- Three interaction model shows the p-value on three way interaction: y = time(PND) * trt * sex
+
+The models also account for within-subjects variation attributed to animals (i.e, inter-animal variability within the same treatment group), and all p-values are calculated through Type-III sum of squares of residuals, using the R “rstatix” package.
+
+## Survival Analysis
+
+For numeric outcomes with a maximum measurement cap of 30 seconds, we conducted Cox proportional hazards regression analyses. In each model, animals that did not successfully complete the task within 30 seconds were treated as censored observations.
+
+The analyses were stratified by postnatal day (PND) to account for developmental differences across time points.
+
+Additionally, we visualized the estimated hazard ratios along with their 95% confidence intervals across PND levels for each treatment group.
+
+There is one animal with `Negative Geotaxis` 30.22 seconds, we will just treated it as a censored data point as other 30 seconds.
+
+## Post-hoc Tests
+
+Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two set of post-hoc tests for each of variable. The first set is all comparison between the control group and each treatment group, and the second set is across all treatment group. The third set of comparison is between male and female within each PND and Treatments, and this is shown only in the figure if avaliable.
+
+## Post Hoc Analysis and P-Value Reporting
+
+To evaluate pairwise differences between treatment groups across postnatal day (PND) levels, we performed post hoc tests tailored to the data type. The resulting tables report p-values from both the interaction model (inter) and the additive model (add). For each model, both raw and adjusted p-values were provided, with adjustment performed using the Hochberg method. The p-value adjustment was applied separately within each time period (PND = 4, 8, 12) and within each hypothesis type (primary or secondary).
+
+For categorical outcomes, the proportion difference between groups was computed along with its standard error using the pooled standard error formula for two proportions. A 95% confidence interval for the difference was calculated using the normal approximation.
+
+A custom helper function was used to format and annotate p-values: values less than 0.05 were marked with an asterisk (\*), and all values were rounded to three decimal places to enhance readability.
+
+**Note:** Post hoc analysis p-values are derived from the `emmeans` package for *estimated marginal means* and adjusted by Hochberg method on each set of comparison and on each time period. These p-values reflect pairwise comparisons between adjusted group means, accounting for other covariates or factors included in the model. A non-significant main effect does not rule out significant pairwise comparisons between individual groups, and vice versa. Post hoc p-values should be interpreted accordingly, in the context of the specific contrasts being tested. The direct mean and standard error are also provided.
+
+## Modeling Result
+
+### EXAMPLE - How to interpret the Posthoc table
+
+The post hoc table presents pairwise group comparisons for the outcome variable (here, "Belly Temp") across different postnatal days (PND = 4, 8, 12). Each row corresponds to a comparison between a treatment group and the control group (Adjuvant+Saline).
+
+### EXAMPLE - How to interpret the survival table
+
+At postnatal day 12, animals in the LDHA+LDHB+CRMP1+STIP1 group had a hazard ratio of 0.569 compared to the Adjuvant+Saline group. This indicates a 43.1% reduction in the hazard of the event (e.g., avoidance failure, mortality, or whichever survival endpoint you're using), suggesting a potential protective effect of the treatment. The 95% confidence interval ranges from 0.325 to 0.996, and the p-value is 0.048, which is statistically significant at the 0.05 level. This suggests the observed difference is unlikely due to chance.
+
+### EXAMPLE - How to interpret errorbar plot
+
+- Each colored dot represents the mean belly temperature for a group (blue = males, yellow = females).
+
+- The vertical lines ("error bars") show the 95% confidence interval (CI) for each group mean, indicating the precision of the estimate.
+
+- The x-axis shows different treatment groups. The plot is divided into three panels, one for each time point (PND).
+
+- Horizontal black brackets with asterisks indicate significant differences between the connected groups AFTER p.value adjustment:
+
+    - * means p < 0.05 (statistically significant)
+    
+    - ** means p < 0.01 (very significant)
+    
+    - *** means p < 0.001 (highly significant)
+
+**How to interpret:**
+
+- **Compare Means:** Look at the position of each colored dot. Higher dots mean higher average belly temperatures. For example, at PND 8, both males and females have higher temperatures compared to PND 4.
+
+- **Confidence Intervals:** If error bars for two groups do not overlap much, this suggests a real difference in their means. However, always rely on the asterisks for statistical significance.
+
+- **Significance Brackets:** A black bracket with an asterisk means the difference between those two groups is statistically significant after correcting for multiple comparisons.
+
+
+```{r anova-tb, results='asis'}
+set_flextable_defaults(
+  font.family = "Arial",  # Optional: Set default font
+  font.size = 10,         # Optional: Set default font size
+  theme_fun = theme_vanilla # Optional: Set default theme
+)
+for (i in 1:13) {
+  cat("\n\n### ---", vars[i], "---\n\n")
+  
+  merged_summary_list[[i]] |>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
+  
+  print(plot_list[[i]])
+  fig_n = fig_n + 1
+  if (i %in% vars_numeric) {
+    cat(paste0(
+      "\nFigure ", fig_n, ": ",
+      "Errorbar plot showing the mean and 95% confidence intervals for ", vars[i],
+      " by Treatment group and Sex across Postnatal Days (PND). ",
+      "P-values for between-treatment and between-sex comparisons are reported separately and adjusted using the Hochberg method.\n\n"
+    ))
+  } else if (i %in% vars_binary) {
+    cat(paste0(
+      "\nFigure ", fig_n, ": ",
+      "Errorbar plot showing the estimated proportion and 95% confidence intervals for ", vars[i],
+      " by Treatment group and Sex across Postnatal Days (PND). ",
+      "P-values for between-treatment and between-sex comparisons are reported separately and adjusted using the Hochberg method.\n\n"
+    ))
+  } else if (i %in% vars_survival) {
+    cat(paste0(
+      "\nFigure ", fig_n, ": ",
+      "Forest plot presenting the hazard ratios (HR) and 95% confidence intervals ",
+      "for ", vars[i], ", comparing each treatment group to the control group, ",
+      "across Postnatal Days (PND).\n\n"
+    ))
+  }
+  
+  if (!(i %in% vars_survival)) { # or: if (!(vars[i] %in% vars_survival))
+    # Numeric/Binary: Print both h1 and h2 posthoc tests
+    post_hoc_h1_list[[i]] |> flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0(
+      "\nTable ", tab_n, 
+      ": Post-hoc test for comparing the control group (Adjuvant+Saline) to treatments ",
+      "with a family-wise 95% confidence level for ", vars[i], ".\n"
+    ))
+
+    post_hoc_h2_list[[i]] |> flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0(
+      "\nTable ", tab_n,
+      ": Post-hoc test for comparing across treatments ",
+      "with a family-wise 95% confidence level for ", vars[i], ".\n\n"
+    ))
+  } else {
+    # Survival: Only print h1 posthoc test (comparison to control)
+    post_hoc_h1_list[[i]] |> flextable::flextable_to_rmd()
+    tab_n = tab_n + 1
+    cat(paste0(
+      "\nTable ", tab_n, 
+      ": Post-hoc test for comparing the control group (Adjuvant+Saline) to treatments ",
+      "with a family-wise 95% confidence level for ", vars[i], " (survival analysis).\n\n"
+    ))
+  }
+  cat(paste0("\n\n- - - - - - - - - - - - - - - - - - - - - -\n\n"))
+}
+
+
+
+```

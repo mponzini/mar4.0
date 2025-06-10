@@ -4,12 +4,18 @@
 \alias{run_posthoc_test_num_h2}
 \title{Posthoc Test Helper Function}
 \usage{
-run_posthoc_test_num_h2(data, vars, exclude_control = "Adjuvant+Saline")
+run_posthoc_test_num_h2(
+  data,
+  var,
+  p_list_3,
+  p_list_2,
+  exclude_control = "Adjuvant+Saline"
+)
 }
 \arguments{
-\item{dataset}{Data frame of the data}
-
 \item{var}{Response variable}
+
+\item{dataset}{Data frame of the data}
 
 \item{control_group}{Level of the control group}
 }

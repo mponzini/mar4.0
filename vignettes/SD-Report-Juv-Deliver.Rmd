@@ -1,0 +1,552 @@
+---
+title: "MAR 4.0 - Social Dyads (Juveniles)"
+output: 
+  bookdown::word_document2:
+    number_section: false
+    reference_docx: docx_landscape.docx
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE , warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+pacman::p_load(dplyr, tidyr, tibble, lme4, lmerTest, car, sjPlot, broom.mixed,
+               flextable, mar4.0)
+knitr::opts_chunk$set(fig.width=14, fig.height=8)
+set_flextable_defaults(
+  font.family = "Arial",
+  font.size = 8,
+  theme_fun = theme_vanilla
+)
+fig_n = 0
+tab_n = 0
+
+sd_data = sd_juv |>
+  rename(Treatment = Treat) |>
+  left_join(weights |> 
+              filter(Week == 15) |> 
+              select(`Animal ID`,Weights), 
+            by = "Animal ID") |>
+  mutate(`Total number Grooming Self` = as.numeric(`Total number Grooming Self`),
+         Weights = as.numeric(Weights))
+```
+
+```{r}
+###################### Functions to generate the table and models
+
+# Loop through each variable
+fit_model <- function(var, formula_str, data, model_type = "lmer") {
+  if (model_type == "glmer") {
+    return(glmmTMB::glmmTMB(as.formula(formula_str), ziformula = ~ 1, family = glmmTMB::tweedie(link = "log"), data = data))
+  } else {
+    return(lmerTest::lmer(as.formula(formula_str), data = data))
+  }
+}
+
+# Function to summarize and format model results
+format_summary_lmer <- function(model_summary, column_name) {
+  formatted <- apply(model_summary$coefficients[, c(1,2,5)], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
+    paste0(estimate, " ±", se, " (p", p_value, ")")
+  })
+  formatted_summary <- as.data.frame(formatted)
+  colnames(formatted_summary) <- c(column_name)
+  return(formatted_summary)
+}
+
+format_summary_glmmTMB <- function(model_summary, column_name) {
+  formatted <- apply(model_summary$coefficients$cond[, c(1,2,4)], 1, function(row) {
+    estimate <- round(row[1], 3)
+    se <- round(row[2], 3)
+    p_value <- ifelse(round(row[3], 3) < 0.001, "<0.001", paste0("=", round(row[3], 3)))
+    paste0(estimate, " ±", se, " (p", p_value, ")")
+  })
+  formatted_summary <- as.data.frame(formatted)
+  colnames(formatted_summary) <- c(column_name)
+  return(formatted_summary)
+}
+
+# Function to combine different model estimates into one table and ordered by the summary_fullmodel (for the same variable).
+create_combined_estimate <- function(..., summary_full) {
+  summaries <- list(summary_full, ...)
+  merged_data <- summaries[[1]]
+  for (i in 2:length(summaries)) {
+    merged_data <- merge(merged_data, summaries[[i]], by = "row.names", all = TRUE)
+    rownames(merged_data) <- merged_data$Row.names
+    merged_data <- merged_data[ , !(colnames(merged_data) %in% "Row.names")]
+  }
+  ordered_data <- merged_data[order(match(rownames(merged_data), rownames(summary_full))), ]
+  ordered_data[is.na(ordered_data)] = ""
+  return(ordered_data)
+}
+
+# Function to perform ANOVA
+perform_anova <- function(model, type = "III") {
+  return(Anova(model, type = type)[, 3])
+}
+```
+
+
+
+
+```{r}
+tx_tbl <- sd_data |>
+  dplyr::select(
+    Treatment, Weights,
+    `Total duration Non-social (Total)`, 
+    `Total duration Social Investigation (Total)`, 
+    `Total duration Play`, 
+    `Total duration Grooming Self`,
+    `Total number Play`,
+    `Total number Grooming Self`
+  ) |>
+  gtsummary::tbl_summary(
+    by = Treatment,
+    type = list(
+      Weights ~ "continuous2",
+      `Total duration Non-social (Total)` ~ "continuous2",
+      `Total duration Social Investigation (Total)` ~ "continuous2",
+      `Total duration Play` ~ "continuous2",
+      `Total duration Grooming Self` ~ "continuous2",
+      `Total number Play` ~ "continuous2",
+      `Total number Grooming Self` ~ "continuous2"
+    ),
+    statistic = list(
+      gtsummary::all_continuous2() ~ c(
+        "{mean} ({sd})",
+        "{median} [{p25}, {p75}]",
+        "{min}, {max}"
+      )
+    )
+  ) |>
+  gtsummary::add_overall()
+
+
+tx_sex_tbl <- sd_data |>
+  dplyr::select(
+    Treatment, Weights, Sex,
+    `Total duration Non-social (Total)`, 
+    `Total duration Social Investigation (Total)`, 
+    `Total duration Play`, 
+    `Total duration Grooming Self`,
+    `Total number Play`,
+    `Total number Grooming Self`
+  ) |>
+  gtsummary::tbl_strata(
+    strata = Sex,
+    .tbl_fun = 
+      ~ .x |>
+        gtsummary::tbl_summary(
+          by = Treatment,
+          type = list(
+            Weights ~ "continuous2",
+            `Total duration Non-social (Total)` ~ "continuous2",
+            `Total duration Social Investigation (Total)` ~ "continuous2",
+            `Total duration Play` ~ "continuous2",
+            `Total duration Grooming Self` ~ "continuous2",
+            `Total number Play` ~ "continuous2",
+            `Total number Grooming Self` ~ "continuous2"
+          ),
+          statistic = list(
+            gtsummary::all_continuous2() ~ c(
+              "{mean} ({sd})",
+              "{median} [{p25}, {p75}]",
+              "{min}, {max}"
+            )
+          )
+        ) |>
+        gtsummary::add_overall() |>
+        gtsummary::modify_header(
+          gtsummary::all_stat_cols() ~ "**{level}**"
+        ),
+    .combine_with = 'tbl_stack'
+  )
+```
+
+
+```{r warning=FALSE}
+data = sd_data
+vars = c("Total duration Non-social (Total)", 
+         "Total duration Play", 
+         "Total duration Social Investigation (Total)", 
+         "Total duration Grooming Self",
+         "Total number Play",   # THIS IS LIKELY TO BE 0 INFLATED
+         "Total number Grooming Self")
+
+usv_anova_tb <- data.frame(Variables = c("Interactive - Treatment",
+                                         "Interactive - Sex",
+                                         "Interactive - Treatment:Sex", 
+                                         "Additive - Treatment",
+                                         "Additive - Sex"))
+merged_summary_list <- list()
+post_hoc_h1_list <- list()
+post_hoc_h2_list <- list()
+plot_list <- list()
+
+# Main loop
+for (i in 1:4) {
+  var <- vars[i]
+  model_type <- if (var %in% c("Total duration Play", "Total duration Grooming Self")) "glmer" else "lmer"
+  
+  # Define formulas
+  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+
+  # Fit models
+  model1 <- fit_model(var, formula1, data, model_type)
+  model2 <- fit_model(var, formula2, data, model_type)
+  
+  # Summarize and format results
+  if (model_type == "lmer") {
+    summary1 <- format_summary_lmer(summary(model1), "Three Interac")
+    summary2 <- format_summary_lmer(summary(model2), "Two - Full")
+  } else {
+    summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+    summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+  }
+
+  merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
+  merged_summary_list[[i]] <- merged_summary_df
+  
+  # Perform ANOVA
+  usv_anova_tb[1:3, var] <- perform_anova(model1)[2:4]
+  usv_anova_tb[4:5, var] <- perform_anova(model2)[2:3]
+
+  
+  p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = 4) |>
+    select(`contrast`, `p.value`, `PND`)
+  p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+    as.data.frame() |> 
+    mutate(PND = 4) |>
+    select(`contrast`, `p.value`, `PND`)
+  p_list_sex <- emmeans::contrast(emmeans::emmeans(model1, ~ Sex|Treatment), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+    as.data.frame()
+  post_hoc_h1_list[[i]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                   var = var, 
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2) |>
+  select(-PND)
+  post_hoc_h2_list[[i]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                   var = var, 
+                                                   p_list_3 = p_list_3,
+                                                   p_list_2 = p_list_2) |>
+  select(-PND)
+  
+  plot_list[[i]] <- create_meanplot(
+    dataset = data,
+    variable = var, 
+    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
+}
+
+# #5 Total number Play - THIS IS a 0 INFLATED VARIABLE
+
+formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+model1 <- glmmTMB::glmmTMB(as.formula(formula1), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
+model2 <- glmmTMB::glmmTMB(as.formula(formula2), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
+summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
+merged_summary_list[[5]] <- merged_summary_df
+usv_anova_tb[1:3, vars[5]] <- perform_anova(model1)[2:4]
+usv_anova_tb[4:5, vars[5]] <- perform_anova(model2)[2:3]
+p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_sex <- emmeans::contrast(emmeans::emmeans(model1, ~ Sex|Treatment), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+  as.data.frame()
+post_hoc_h1_list[[5]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[5], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
+post_hoc_h2_list[[5]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[5], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
+plot_list[[5]] <- create_meanplot(
+  dataset = data,
+  variable = vars[5], 
+  contrast_p = p_list_3 |> adjust_p_by_pnd(),
+  contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
+
+# #6 Total number Grooming Self
+formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+model1 <- glmmTMB::glmmTMB(as.formula(formula1), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
+model2 <- glmmTMB::glmmTMB(as.formula(formula2), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
+summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
+summary2 <- format_summary_glmmTMB(summary(model2), "Two - Full")
+merged_summary_df <- create_combined_estimate(summary_full = summary1, summary2)
+merged_summary_list[[6]] <- merged_summary_df
+usv_anova_tb[1:3, vars[6]] <- perform_anova(model1)[2:4]
+usv_anova_tb[4:5, vars[6]] <- perform_anova(model2)[2:3]
+p_list_3 <- emmeans::contrast(emmeans::emmeans(model1, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "pairwise", adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_sex <- emmeans::contrast(emmeans::emmeans(model1, ~ Sex|Treatment), 
+                                method = "pairwise", 
+                                adjust = "none") |>
+  as.data.frame()
+post_hoc_h1_list[[6]] <- run_posthoc_test_num_h1(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[6], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2)|>
+  select(-PND)
+post_hoc_h2_list[[6]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, Animal = as.factor(seq_len(n()))), 
+                                                 var = vars[6], 
+                                                 p_list_3 = p_list_3,
+                                                 p_list_2 = p_list_2) |>
+  select(-PND)
+plot_list[[6]] <- create_meanplot(
+  dataset = data,
+  variable = vars[6], 
+  contrast_p = p_list_3 |> adjust_p_by_pnd(),
+  contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
+
+usv_anova_tb = usv_anova_tb |> 
+  column_to_rownames(var = "Variables") |>
+  t() |>
+  round(3)
+```
+
+# Background
+
+In MAR 4.0 project, this section we will wants to know analysis result on the	Social Dyads data. 
+
+We are going to run the analysis use R-package structure within github. R 4.4.3 is used for the analysis, and we are wrapping all the materials into a R package.
+
+# Data Processing
+
+The `familiarity` trials were excluded. Any animals that did not explore at least one area/chamber or animals that were cross-fostered were excluded from analysis, leaving us with a final sample size of `r usv |> dplyr::pull(dplyr::any_of('Animal ID')) |> unique() |> length()`. 
+
+The interested variables at USVs data are: `r paste(vars, collapse = ", ")`.
+
+*We are not adjusting weight for juveniles.*
+
+# Summary statistics
+
+The all interested variables were summarized by Treatment group overall (Table \@ref(tab:summary-tbl)), and by treatment groups stratified by sex (Table \@ref(tab:summary-tbl-sex)).
+
+```{r summary-tbl}
+tx_tbl |>
+  gtsummary::as_flex_table() |>
+  flextable::set_caption(
+    caption = paste0(
+      "Summary of USV (Juveniles) by Treatment Groups."
+    )
+  ) |>
+  flextable::width(
+    width = 1.15
+  ) |>
+  flextable::width(
+    j = 1,
+    width = 1.16
+  )
+```
+
+\
+
+```{r summary-tbl-sex}
+tx_sex_tbl |>
+  gtsummary::as_flex_table() |>
+  flextable::set_caption(
+    caption = paste0(
+      "Summary of USV (Juveniles) by Treatment Groups, stratified",
+      "by Sex."
+    )
+  ) |>
+  flextable::width(
+    width = 1.15
+  ) |>
+  flextable::width(
+    j = 1,
+    width = 0.7
+  ) |>
+  flextable::width(
+    j = 2,
+    width = 1.16
+  )
+```
+
+# Model Results
+
+The relationship between treatment groups and variables of interest was assessed using linear mixed-effects models (Total duration Non-social and Total duration Social Investigation) or generalized regression with *Tweedie* distribution (Total duration Play and Total duration Grooming Self), incorporating a random litter effect. Negative binomial regression also examined but the fitting performance is worse than Tweedie.
+
+Negative binomial or Poisson Regression are fitted to count variables.
+
+The regression fitting process followed these steps:
+
+- Fit the interaction: Begin with a model interactions.
+
+- Evaluate the interaction: If the interaction is not significant, proceed with a model without interaction.
+
+At this stage, all models ANOVA and estimated results are fitted for internal review. However, adjustments may be made based on decisions about the report's delivery format.
+
+## ANOVA Table
+
+Type III ANOVA table displays the anova p-values for each variable in each model, and below is the explanation of the model:
+
+- Three interaction model shows the p-value on three way interaction: y = trt * sex
+
+The models also account for within-subjects variation attributed to animals (i.e, inter-animal variability within the same treatment group), and all p-values are calculated through Type-III sum of squares of residuals, using the R “rstatix” package.
+
+## Post-hoc Tests
+
+Post-hoc tests are multiple pairwise comparisons between groups to identify which groups are different. Based on our hypothesis, we designed two sets of post-hoc tests for each variable. The first set is all comparisons between the control group and each treatment group, and the second set is pairwise comparisons across all treatment groups. The p-values are adjusted by Bonferroni method on each set of comparison and on each time period.
+
+## Post Hoc Analysis and P-Value Reporting
+
+To evaluate pairwise differences between treatment groups across postnatal day (PND) levels, we performed post hoc tests tailored to the data type. The resulting tables report p-values from both the interaction model (inter) and the additive model (add). For each model, both raw and adjusted p-values were provided, with adjustment performed using the Hochberg method. The p-value adjustment was applied separately within each time period (PND = 4, 8, 12) and within each hypothesis type (primary or secondary).
+
+For categorical outcomes, the proportion difference between groups was computed along with its standard error using the pooled standard error formula for two proportions. A 95% confidence interval for the difference was calculated using the normal approximation.
+
+A custom helper function was used to format and annotate p-values: values less than 0.05 were marked with an asterisk (\*), and all values were rounded to three decimal places to enhance readability.
+
+**Note:** Post hoc analysis p-values are derived from the `emmeans` package for *estimated marginal means* and adjusted by Hochberg method on each set of comparison and on each time period. These p-values reflect pairwise comparisons between adjusted group means, accounting for other covariates or factors included in the model. A non-significant main effect does not rule out significant pairwise comparisons between individual groups, and vice versa. Post hoc p-values should be interpreted accordingly, in the context of the specific contrasts being tested. The direct mean and standard error are also provided.
+
+## Modeling Result
+
+### EXAMPLE - How to interpret the Posthoc table
+
+The post hoc table presents pairwise group comparisons for the outcome variable (here, "Belly Temp") across different postnatal days (PND = 4, 8, 12). Each row corresponds to a comparison between a treatment group and the control group (Adjuvant+Saline).
+
+### EXAMPLE - How to interpret errorbar plot
+
+- Each colored dot represents the mean belly temperature for a group (blue = males, yellow = females).
+
+- The vertical lines ("error bars") show the 95% confidence interval (CI) for each group mean, indicating the precision of the estimate.
+
+- The x-axis shows different treatment groups. The plot is divided into three panels, one for each time point (PND).
+
+- Horizontal black brackets with asterisks indicate significant differences between the connected groups AFTER p.value adjustment:
+
+    - * means p < 0.05 (statistically significant)
+    
+    - ** means p < 0.01 (very significant)
+    
+    - *** means p < 0.001 (highly significant)
+
+**How to interpret:**
+
+- **Compare Means:** Look at the position of each colored dot. Higher dots mean higher average belly temperatures. For example, at PND 8, both males and females have higher temperatures compared to PND 4.
+
+- **Confidence Intervals:** If error bars for two groups do not overlap much, this suggests a real difference in their means. However, always rely on the asterisks for statistical significance.
+
+- **Significance Brackets:** A black bracket with an asterisk means the difference between those two groups is statistically significant after correcting for multiple comparisons.
+
+
+
+```{r anova-tb}
+usv_anova_tb |>
+  as.data.frame() |>
+  tibble::rownames_to_column("Variable") |>
+  flextable::flextable() |>
+  flextable::set_caption(
+    caption = paste0(
+      "ANOVA P-Value Table of USV Object (Juveniles) in the Three Different Model ",
+      "(Interaction, Additive, and Basic)"
+    )
+  ) |>
+  flextable::width(
+    width = 1.15
+  ) |>
+  flextable::width(
+    j = 1,
+    width = 1.5
+  ) |>
+  flextable::width(
+    j = 2,
+    width = 1.16
+  )
+tab_n = tab_n + 1
+cat(paste0("ANOVA P-Value Table of USV Object (Juveniles) in the Three Different Model ",
+           "(Interaction, Additive, and Basic)\n"))
+```
+
+## Modeling Result
+
+The overall estimation tables also displayed here for all the models for an easier comparison. The no interaction model is also displayed for examine purpose.
+
+### EXAMPLE - How to interpret the ANOVA table
+
+The main effect of Treatment has a p-value of 0.001 in both the 3-way and 2-way models, indicating a highly statistically significant effect. This means that, regardless of Sex, the outcome variable differs significantly across the treatment groups. In other words, the choice of treatment alone has a meaningful impact on the outcome, and this finding is robust across both models. 
+
+### EXAMPLE - How to interpret the Posthoc table
+
+Post hoc pairwise comparisons were conducted to examine differences between treatment groups at each postnatal day (PND) using chi-squared or Fisher's exact tests, depending on cell sizes. The table reports the proportion differences, standard errors, and 95% confidence intervals for each comparison. For example, at PND 4, the comparison between CRMP1+CRMP2 and the control group (Adjuvant+Saline) yielded a proportion difference of 0.215, with a 95% confidence interval of [0.048, 0.382] and an adjusted p-value of 0.028*, indicating a statistically significant increase in the response for the treatment group. P-values were adjusted using the Bonferroni method to control for multiple comparisons within each time point and hypothesis set. Asterisks next to p-values denote statistical significance at the 0.05 level.
+
+```{r results='asis'}
+# Loop to generate flextables
+for (i in 1:length(vars)) {
+  cat("\n\n### ---", vars[i], "---\n\n")
+  merged_summary_list[[i]] |>
+    as.data.frame() |>
+    tibble::rownames_to_column("Variable") |>
+    flextable::flextable() |>
+    flextable::width(
+      width = 1.15
+    ) |>
+    flextable::width(
+      j = 1,
+      width = 1.5
+    ) |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, 
+             ": Model Estimation Result (Juveniles) in the Model - ", 
+             vars[i] ,"\n"))
+
+  # Print the boxplot
+  print(plot_list[[i]])
+  fig_n = fig_n + 1
+  cat(paste0(
+    "\nFigure ", fig_n, ": ",
+    "Errorbar plot showing the estimated proportion and 95% confidence intervals for ", vars[i],
+    " by Treatment group and Sex across Postnatal Days (PND). ",
+    "P-values for between-treatment and between-sex comparisons are reported separately and adjusted using the Hochberg method.\n\n"
+  ))
+  
+  post_hoc_h1_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, 
+             ": Post-hoc test for comparing the control null group (Adjuvant+Saline) to treatments with a control 95% family-wise confidence level - ", 
+             vars[i] ,"\n"))
+
+  post_hoc_h2_list[[i]]|>
+    as.data.frame(row.names = NULL) |>
+    flextable::flextable() |>
+    flextable::set_table_properties(layout = "autofit") |>
+    flextable::flextable_to_rmd()
+  tab_n = tab_n + 1
+  cat(paste0("\nTable ",tab_n, ": Post-hoc test for comparing across treatments with a control 95% family-wise confidence level - ", vars[i] ,"\n\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
+  cat(paste0("\n- - - - - - - - - - - - - - - - - - - - - -\n"))
+}
+```

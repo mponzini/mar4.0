@@ -4,7 +4,13 @@
 \alias{run_posthoc_test_cat_h2}
 \title{Posthoc Test Helper Function}
 \usage{
-run_posthoc_test_cat_h2(data, var, control_group = "Adjuvant+Saline")
+run_posthoc_test_cat_h2(
+  data,
+  var,
+  p_list_3,
+  p_list_2,
+  control_group = "Adjuvant+Saline"
+)
 }
 \arguments{
 \item{var}{Response variable}

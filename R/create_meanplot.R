@@ -10,82 +10,213 @@
 #'
 #' @return A ggplot object.
 #' @export
+
 create_meanplot <- function(
     dataset,
     variable,
     treatment = "Treatment",
-    strata = NULL,
+    strata = "Sex",
     contrast_p = NULL,
+    contrast_p_sex = NULL,
     xlab = treatment,
     ylab = variable
 ) {
-  var_sym <- rlang::sym(variable)
-  treatment_sym <- rlang::sym(treatment)
+  # Rename variable to y_plot for safe handling
+  dataset <- dataset |>
+    dplyr::rename(y_plot = !!rlang::sym(variable)) |>
+    dplyr::mutate(y_plot = as.numeric(.data$y_plot)) |>
+    dplyr::filter(!is.na(y_plot)) |>
+    dplyr::mutate(
+      !!rlang::sym(treatment) :=
+        factor(
+          .data[[treatment]],
+          levels = sort(unique(as.character(.data[[treatment]]))),
+          ordered = TRUE
+        )
+    )
 
-  # Compute summary: mean ± 95% CI
-  if (is.null(strata)) {
+
+  has_PND <- "PND" %in% names(dataset)
+
+  # Plot
+  plot <- ggpubr::ggerrorplot(
+    dataset,
+    x = treatment,
+    y = "y_plot",
+    desc_stat = "mean_ci",
+    color = strata,
+    shape = strata,
+    palette = c("#00AFBB", "#E7B800"),
+    position = ggplot2::position_dodge(0.5),
+    xlab = xlab,
+    ylab = ylab,
+    error.plot = "errorbar",
+    add = "mean",
+    width = 0.3
+  ) +
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+  # Conditionally add facet_wrap if 'PND' column exists
+  if (has_PND) {
+    plot <- plot + ggplot2::facet_wrap(~PND, nrow = 1, labeller = label_both)
+  }
+
+  # Calculate summary data for error bars
+  if (has_PND) {
     summary_data <- dataset |>
-      dplyr::group_by(!!treatment_sym) |>
+      dplyr::group_by(.data[[treatment]], .data[[strata]], PND) |>
       dplyr::summarise(
-        mean = mean(!!var_sym, na.rm = TRUE),
-        se = stats::sd(!!var_sym, na.rm = TRUE) / sqrt(dplyr::n()),
+        mean = mean(.data$y_plot, na.rm = TRUE),
+        se = stats::sd(.data$y_plot, na.rm = TRUE) / sqrt(dplyr::n()),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        lower = mean - 1.96 * se,
+        upper = mean + 1.96 * se
+      )
+  } else {
+    summary_data <- dataset |>
+      dplyr::group_by(.data[[treatment]], .data[[strata]]) |>
+      dplyr::summarise(
+        mean = mean(.data$y_plot, na.rm = TRUE),
+        se = stats::sd(.data$y_plot, na.rm = TRUE) / sqrt(dplyr::n()),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        lower = mean - 1.96 * se,
+        upper = mean + 1.96 * se
+      )
+  }
+
+  if (has_PND) {
+    y_step_vec <- summary_data |>
+      dplyr::mutate(y_step = (max(upper, na.rm = TRUE) - min(lower, na.rm = TRUE)) * 0.07) |>
+      dplyr::group_by(PND) |>
+      dplyr::summarise(
+        y_step = max(y_step, (max(upper, na.rm = TRUE) - min(lower, na.rm = TRUE)) * 0.1),
         .groups = "drop"
       )
   } else {
-    strata_sym <- rlang::sym(strata)
-    summary_data <- dataset |>
-      dplyr::group_by(!!treatment_sym, !!strata_sym) |>
+    y_step_vec <- summary_data |>
+      dplyr::mutate(y_step = (max(upper, na.rm = TRUE) - min(lower, na.rm = TRUE)) * 0.07) |>
       dplyr::summarise(
-        mean = mean(!!var_sym, na.rm = TRUE),
-        se = stats::sd(!!var_sym, na.rm = TRUE) / sqrt(dplyr::n()),
-        .groups = "drop"
+        y_step = max(y_step, (max(upper, na.rm = TRUE) - min(lower, na.rm = TRUE)) * 0.1)
       )
   }
 
-  summary_data <- summary_data |>
+  summary_data |>
     dplyr::mutate(
-      ci_lower = mean - 1.96 * se,
-      ci_upper = mean + 1.96 * se
+      !!rlang::sym(treatment) :=
+        factor(
+          .data[[treatment]],
+          levels = sort(unique(as.character(.data[[treatment]]))),
+          ordered = TRUE
+        )
     )
 
-  # Build base plot
-  p <- ggplot2::ggplot(summary_data, ggplot2::aes(x = !!treatment_sym, y = mean)) +
-    ggplot2::geom_point() +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = ci_lower, ymax = ci_upper),
-      width = 0.2
-    ) +
-    ggplot2::labs(x = xlab, y = ylab) +
-    ggplot2::theme_classic() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-
-  # Facet if needed
-  if (!is.null(strata)) {
-    p <- p + ggplot2::facet_wrap(ggplot2::vars(!!strata_sym))
-  }
-
-  # Add significance bars if provided
-  if (!is.null(contrast_p)) {
-    # Use helper to convert to plotting format
-    pval_df <- get_significant_p_value(
+  # Step 3: Add p-values across treatment if provided
+  if (!is.null(contrast_p) && nrow(dplyr::filter(contrast_p, p.adj < 0.05)) > 0) {
+    pval_df_treat <- get_significant_p_value(
       contrast_table = contrast_p,
-      y_start = max(summary_data$ci_upper, na.rm = TRUE) * 1.05,
-      y_step = (max(summary_data$ci_upper, na.rm = TRUE) -
-        min(summary_data$ci_lower, na.rm = TRUE)) * 0.1
+      y_start = NA,
+      y_step = NA
     )
-    print(pval_df)
-    p <- p +
-      ggpubr::stat_pvalue_manual(
-        pval_df,
+    if (has_PND && "PND" %in% colnames(pval_df_treat)) {
+      pval_df_treat <- pval_df_treat |>
+        dplyr::left_join(y_step_vec, by = "PND") |>
+        dplyr::group_by(PND) |>
+        dplyr::mutate(
+          y.position = max(summary_data$upper[summary_data$PND == unique(PND)], na.rm = TRUE) +
+            (dplyr::row_number()) * y_step
+        ) |>
+        dplyr::ungroup()
+      pval_df_treat$PND <- factor(pval_df_treat$PND, levels = c(4, 8, 12), ordered = TRUE)
+    } else {
+      pval_df_treat <- pval_df_treat |>
+        dplyr::mutate(
+          y.position = max(summary_data$upper, na.rm = TRUE) +
+            (dplyr::row_number()) * y_step_vec$y_step[1]
+        )
+    }
+
+    pval_df_treat <- pval_df_treat |>
+      dplyr::mutate(
+        xmin = .data$group1,
+        xmax = .data$group2,
+        groups = purrr::pmap(list(group1 = .data$group1, group2 = .data$group2), c),
+        .y. = "Treatment",
+        p = .data$p.adj
+      )
+
+    plot <- plot +
+      ggprism::add_pvalue(
+        pval_df_treat,
         label = "p.signif",
-        tip.length = 0.01,
-        bracket.size = 0.6
-      ) +
-      ggplot2::scale_y_continuous(
-        expand = c(0, 0), limits = c(
-          min(summary_data$ci_lower, na.rm = TRUE) * 0.95,
-        max(pval_df$y.position)*1.05))
+        tip.length = 0.003,
+        facet = if (has_PND) "PND" else NULL
+      )
   }
 
-  return(p)
+  # Calculate upper for y.position for each treatment
+  if (has_PND) {
+    summary_data_ <- summary_data |>
+      dplyr::group_by(PND, .data[[treatment]]) |>
+      dplyr::summarise(upper = max(.data$upper, na.rm = TRUE), .groups = "drop")
+  } else {
+    summary_data_ <- summary_data |>
+      dplyr::group_by(.data[[treatment]]) |>
+      dplyr::summarise(upper = max(.data$upper, na.rm = TRUE), .groups = "drop")
+  }
+
+  # Step 4: Add p-values across sex if provided
+  if (!is.null(contrast_p_sex) && nrow(dplyr::filter(contrast_p_sex, p.adj < 0.05)) > 0) {
+    pval_df_sex <- contrast_p_sex |>
+      dplyr::mutate(
+        !!rlang::sym(treatment) :=
+          factor(
+            .data[[treatment]],
+            levels = sort(unique(as.character(.data[[treatment]]))),
+            ordered = TRUE
+          )
+      ) |>
+      dplyr::mutate(
+        group1 = "M",
+        group2 = "F",
+        p.signif = stars(.data$p.adj)
+      ) |>
+      dplyr::left_join(summary_data_, by = if (has_PND) c("PND", "Treatment" = treatment) else c("Treatment" = treatment)) |>
+      dplyr::left_join(y_step_vec, by = if (has_PND) "PND" else character()) |>
+      dplyr::mutate(
+        y.position = .data$upper + if (has_PND) y_step * 0.3 else y_step_vec$y_step[1],
+        xmin = .data$Treatment,
+        xmax = .data$Treatment
+      ) |>
+      dplyr::mutate(
+        xmin = as.numeric(factor(Treatment)) - 0.12,
+        xmax = as.numeric(factor(Treatment)) + 0.12
+      ) |>
+      dplyr::filter(p.adj < 0.05)
+
+    if (has_PND && "PND" %in% colnames(pval_df_sex)) {
+      pval_df_sex$PND <- factor(pval_df_sex$PND, levels = c(4, 8, 12), ordered = TRUE)
+    }
+
+    plot <- plot +
+      ggprism::add_pvalue(
+        pval_df_sex,
+        xmin = "xmin",
+        xmax = "xmax",
+        label = "p.signif",
+        y.position = "y.position",
+        tip.length = 0.003,
+        facet = if (has_PND) "PND" else NULL
+      )
+  }
+
+  return(plot)
 }
+
+
+
+
