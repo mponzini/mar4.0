@@ -1,5 +1,5 @@
 ---
-title: "MAR 4.0 - Social Dyads (Juveniles)"
+title: "MAR 4.0 - Social Dyads (Adult)"
 output: 
   bookdown::word_document2:
     number_section: false
@@ -24,7 +24,7 @@ set_flextable_defaults(
 fig_n = 0
 tab_n = 0
 
-sd_data = sd_juv |>
+sd_data = sd_adult |>
   rename(Treatment = Treat) |>
   left_join(weights |> 
               filter(Week == 15) |> 
@@ -194,8 +194,8 @@ for (i in 1:4) {
   model_type <- if (var %in% c("Total duration Play", "Total duration Grooming Self")) "glmer" else "lmer"
   
   # Define formulas
-  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 
   # Fit models
   model1 <- fit_model(var, formula1, data, model_type)
@@ -250,8 +250,8 @@ for (i in 1:4) {
 
 # #5 Total number Play - THIS IS a 0 INFLATED VARIABLE
 
-formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 model1 <- glmmTMB::glmmTMB(as.formula(formula1), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
 model2 <- glmmTMB::glmmTMB(as.formula(formula2), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
 summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
@@ -289,8 +289,8 @@ plot_list[[5]] <- create_meanplot(
   contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 
 # #6 Total number Grooming Self
-formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 model1 <- glmmTMB::glmmTMB(as.formula(formula1), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
 model2 <- glmmTMB::glmmTMB(as.formula(formula2), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
 summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
@@ -345,7 +345,7 @@ The `familiarity` trials were excluded. Any animals that did not explore at leas
 
 The interested variables at SDs data are: `r paste(vars, collapse = ", ")`.
 
-*We are not adjusting weight for juveniles.*
+*Weight adjusted for adult in model use the data at the 15 month.*
 
 # Summary statistics
 

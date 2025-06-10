@@ -199,8 +199,8 @@ for (i in 1:4) {
   model_type <- if (var %in% c("Total duration Play", "Total duration Grooming Self")) "glmer" else "lmer"
   
   # Define formulas
-  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+  formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+  formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 
   # Fit models
   model1 <- fit_model(var, formula1, data, model_type)
@@ -246,8 +246,8 @@ for (i in 1:4) {
 
 # #5 Total number Play - THIS IS a 0 INFLATED VARIABLE
 
-formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+formula1 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[5], "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 model1 <- glmmTMB::glmmTMB(as.formula(formula1), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
 model2 <- glmmTMB::glmmTMB(as.formula(formula2), ziformula = ~ 1, family = glmmTMB::nbinom2(link = "log"), data = data |> filter(!is.na(!!sym(vars[5]))))
 summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
@@ -276,8 +276,8 @@ post_hoc_h2_list[[5]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, 
   select(-PND)
 
 # #6 Total number Grooming Self
-formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` +  `Treatment`:`Sex` + (1 | `Litter ID`)")
-formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + (1 | `Litter ID`)")
+formula1 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + `Treatment`:`Sex` + Weights + (1 | `Litter ID`)")
+formula2 <-  paste0("`", vars[6], "` ~ `Treatment` + `Sex` + Weights + (1 | `Litter ID`)")
 model1 <- glmmTMB::glmmTMB(as.formula(formula1), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
 model2 <- glmmTMB::glmmTMB(as.formula(formula2), family = poisson(link = "log"), data = data |> filter(!is.na(!!sym(vars[6]))))
 summary1 <- format_summary_glmmTMB(summary(model1), "Three Interac")
