@@ -46,7 +46,7 @@ create_meanplot <- function(
     desc_stat = "mean_ci",
     color = strata,
     shape = strata,
-    palette = c("#00AFBB", "#E7B800"),
+    palette = c("#022851", "#FFBF00"),
     position = ggplot2::position_dodge(0.5),
     xlab = xlab,
     ylab = ylab,
