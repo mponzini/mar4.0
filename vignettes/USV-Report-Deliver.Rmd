@@ -89,13 +89,25 @@ summary_tbls <- function(
           by = Treatment,
           type = where(is.numeric) ~ "continuous2",
           statistic = gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+            "{mean} ({sd})"
           ) 
         ) |> gtsummary::add_overall(),,
       .combine_with = "tbl_stack"
     ) |>
     gtsummary::modify_spanning_header(
       gtsummary::all_stat_cols() ~ "Males"
+    ) |>
+    gtsummary::modify_header(
+      update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+    ) |>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
     )
 
   tbl_female <- dataset |>
@@ -108,13 +120,25 @@ summary_tbls <- function(
           by = Treatment,
           type = where(is.numeric) ~ "continuous2",
           statistic = gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+            "{mean} ({sd})"
           )
         ) |> gtsummary::add_overall(),
       .combine_with = "tbl_stack"
     ) |>
     gtsummary::modify_spanning_header(
       gtsummary::all_stat_cols() ~ "Females"
+    ) |>
+    gtsummary::modify_header(
+      update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+    )|>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
     )
 
   ans <- list(
@@ -367,13 +391,13 @@ set_flextable_defaults(
 # Loop and show all the table & figures
 for (i in seq_along(vars)) {
   cat("\n\n### ---", vars[i], "---\n\n")
-  merged_summary_list[[i]] |>
-    as.data.frame(row.names = NULL) |>
-    flextable::flextable() |>
-    flextable::set_table_properties(layout = "autofit") |>
-    flextable::flextable_to_rmd()
-  tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
+  # merged_summary_list[[i]] |>
+  #   as.data.frame(row.names = NULL) |>
+  #   flextable::flextable() |>
+  #   flextable::set_table_properties(layout = "autofit") |>
+  #   flextable::flextable_to_rmd()
+  # tab_n = tab_n + 1
+  # cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
   
   # Print the boxplot
   print(plot_list[[i]])

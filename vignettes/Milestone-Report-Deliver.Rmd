@@ -82,13 +82,26 @@ summary_tbls <- function(
           by = Treatment,
           type = where(is.numeric) ~ "continuous2",
           statistic = gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+            "{mean} ({sd})"
           ) 
         ) |> gtsummary::add_overall(),
       .combine_with = "tbl_stack"
     ) |>
     gtsummary::modify_spanning_header(
       gtsummary::all_stat_cols() ~ "Males"
+    ) |>
+    gtsummary::modify_header(
+      groupname_col = "PND",
+      update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+    ) |>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
     )
 
   tbl_female <- dataset |>
@@ -101,13 +114,26 @@ summary_tbls <- function(
           by = Treatment,
           type = where(is.numeric) ~ "continuous2",
           statistic = gtsummary::all_continuous2() ~ c(
-            "{mean} ({sd})", "{median} ({p25}, {p75})", "{min} - {max}"
+            "{mean} ({sd})"
           )
         ) |> gtsummary::add_overall(),
       .combine_with = "tbl_stack"
     ) |>
     gtsummary::modify_spanning_header(
       gtsummary::all_stat_cols() ~ "Females"
+    ) |>
+    gtsummary::modify_header(
+      groupname_col = "PND",
+      update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+    ) |>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
     )
 
   ans <- list(
@@ -458,6 +484,13 @@ for (i in vars_survival) {
     theme(
       panel.grid.major.y = element_blank(),
       strip.text = element_text(face = "bold", size = 14)
+    )  +
+    ggplot2::theme(
+    axis.title = ggplot2::element_text(size = 20, face = "bold"),
+    axis.text  = ggplot2::element_text(size = 16),
+    legend.title = ggplot2::element_text(size = 18, face = "bold"),
+    legend.text  = ggplot2::element_text(size = 16),
+    strip.text   = ggplot2::element_text(size = 18, face = "bold")  # Facet labels
     )
   
   
@@ -612,13 +645,13 @@ set_flextable_defaults(
 for (i in 1:13) {
   cat("\n\n### ---", vars[i], "---\n\n")
   
-  merged_summary_list[[i]] |>
-    as.data.frame(row.names = NULL) |>
-    flextable::flextable() |>
-    flextable::set_table_properties(layout = "autofit") |>
-    flextable::flextable_to_rmd()
-  tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
+  # merged_summary_list[[i]] |>
+  #   as.data.frame(row.names = NULL) |>
+  #   flextable::flextable() |>
+  #   flextable::set_table_properties(layout = "autofit") |>
+  #   flextable::flextable_to_rmd()
+  # tab_n = tab_n + 1
+  # cat(paste0("\nTable ",tab_n, ": Cross-sectional Comparison of ANOVA Results for Two Model Specifications of ", vars[i] ,"\n\n"))
   
   print(plot_list[[i]])
   fig_n = fig_n + 1

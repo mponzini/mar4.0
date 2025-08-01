@@ -118,13 +118,23 @@ tx_tbl <- sd_data |>
     ),
     statistic = list(
       gtsummary::all_continuous2() ~ c(
-        "{mean} ({sd})",
-        "{median} [{p25}, {p75}]",
-        "{min}, {max}"
+        "{mean} ({sd})"
       )
     )
   ) |>
-  gtsummary::add_overall()
+  gtsummary::add_overall() |>
+  gtsummary::modify_header(
+    update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+  )|>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
+    )
 
 
 tx_sex_tbl <- sd_data |>
@@ -154,16 +164,26 @@ tx_sex_tbl <- sd_data |>
           ),
           statistic = list(
             gtsummary::all_continuous2() ~ c(
-              "{mean} ({sd})",
-              "{median} [{p25}, {p75}]",
-              "{min}, {max}"
+              "{mean} ({sd})"
             )
           )
         ) |>
         gtsummary::add_overall() |>
         gtsummary::modify_header(
           gtsummary::all_stat_cols() ~ "**{level}**"
-        ),
+        )  |>
+        gtsummary::modify_header(
+          update = tidyselect::starts_with("stat_") ~ "**{level}** (N={n})"
+        )|>
+    gtsummary::modify_table_body(
+      ~ .x |>
+        mutate(
+          label = case_when(
+            label == "Unknown" ~ "Missing, n",
+            TRUE ~ label
+          )
+        )
+    ),
     .combine_with = 'tbl_stack'
   )
 ```
@@ -503,22 +523,22 @@ Post hoc pairwise comparisons were conducted to examine differences between trea
 # Loop to generate flextables
 for (i in 1:length(vars)) {
   cat("\n\n### ---", vars[i], "---\n\n")
-  merged_summary_list[[i]] |>
-    as.data.frame() |>
-    tibble::rownames_to_column("Variable") |>
-    flextable::flextable() |>
-    flextable::width(
-      width = 1.15
-    ) |>
-    flextable::width(
-      j = 1,
-      width = 1.5
-    ) |>
-    flextable::flextable_to_rmd()
-  tab_n = tab_n + 1
-  cat(paste0("\nTable ",tab_n, 
-             ": Model Estimation Result (Juveniles) in the Model - ", 
-             vars[i] ,"\n"))
+  # merged_summary_list[[i]] |>
+  #   as.data.frame() |>
+  #   tibble::rownames_to_column("Variable") |>
+  #   flextable::flextable() |>
+  #   flextable::width(
+  #     width = 1.15
+  #   ) |>
+  #   flextable::width(
+  #     j = 1,
+  #     width = 1.5
+  #   ) |>
+  #   flextable::flextable_to_rmd()
+  # tab_n = tab_n + 1
+  # cat(paste0("\nTable ",tab_n, 
+  #            ": Model Estimation Result (Juveniles) in the Model - ", 
+  #            vars[i] ,"\n"))
 
   # Print the boxplot
   print(plot_list[[i]])

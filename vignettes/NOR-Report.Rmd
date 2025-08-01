@@ -74,39 +74,66 @@ The results suggest a Sex is significant under the interaction model, but the se
 ```{r results='markup',warning = FALSE}
 NOR_tb_anova <- data.frame(Variables = c("Treatment","Sex","Interaction"))
 
-# Loop through each variable
-#for (i in 1:length(vars)) {
-  # Fit the mixed effects model
-  lmer_model <- lmerTest::lmer(as.formula(paste0("`",vars[1],"`", "~ `Treat` + `Sex` + `Treat` * `Sex` + (1 | `Litter ID`)")), data = data) 
-  lmer_summary <- lmer_model |> summary()
-  # Convert the result into a data frame for clarity
-  formatted_summary <- apply(lmer_summary$coefficients[, c(1, 2, 5)], 1, function(row) {
-    estimate <- round(row[1], 3)
-    se <- round(row[2], 3)
-    p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
-    formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
-    return(formatted_row)
-  })
-  formatted_summary_df <- as.data.frame(t(formatted_summary))
-  colnames(formatted_summary_df) <- c("Estimate (SE) - Interaction", "P-Value")
-  # Extract the ANOVA Type III p-value
-  NOR_tb_anova[1:3, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2:4]
-  # NOR_tb_anova[i, "False Discovery Rate (FDR)"] = NA
-  # emm_s.t <- emmeans::emmeans(lmer_model, pairwise ~  `Treat`,adjust = "none")
-  # 
-  # # Obtaining Contrasts
-  # for (j in 1:length(contrast_index)){
-  #   NOR_tb_anova[i,contrast_label[j]] = emm_s.t$contrasts[contrast_index[j]] %>% 
-  #     as.data.frame() %>% 
-  #     select(p.value) %>% 
-  #     as.numeric %>%
-  #     round(4)
-  # }
-#}
-# NOR_tb_anova$`False Discovery Rate (FDR)` <- round(p.adjust(NOR_tb_anova$`ANOVA III P-value`, method = "BH"),6)
-# NOR_tb_anova$`ANOVA III P-value` <- round(NOR_tb_anova$`ANOVA III P-value`,6)
+# Fit the mixed effects model
+lmer_model <- lmerTest::lmer(as.formula(paste0("`",vars[1],"`", "~ `Treat` + `Sex` + `Treat` * `Sex` + (1 | `Litter ID`)")), data = data) 
+lmer_model2 <- lmerTest::lmer(
+  as.formula(
+    paste0("`",vars[1],"`", "~ `Treat` + `Sex` + (1 | `Litter ID`)")
+    ), 
+  data = data) 
+lmer_summary <- lmer_model |> summary()
+# Convert the result into a data frame for clarity
+formatted_summary <- apply(lmer_summary$coefficients[, c(1, 2, 5)], 1, function(row) {
+  estimate <- round(row[1], 3)
+  se <- round(row[2], 3)
+  p_value <- ifelse(round(row[3], 3)<0.001,"<0.001",round(row[3], 3))
+  formatted_row <- c(paste0(estimate, " (", se, ")"), p_value)
+  return(formatted_row)
+})
+formatted_summary_df <- as.data.frame(t(formatted_summary))
+colnames(formatted_summary_df) <- c("Estimate (SE) - Interaction", "P-Value")
+# Extract the ANOVA Type III p-value
+NOR_tb_anova[1:3, "ANOVA III P-value"] = Anova(lmer_model, type = "III")$`Pr(>Chisq)`[2:4]
+
+p_list_3 <- 
+  emmeans::contrast(emmeans::emmeans(lmer_model, ~ Treat), 
+                    method = "pairwise", 
+                    adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+p_list_2 <- 
+  emmeans::contrast(emmeans::emmeans(lmer_model2, ~ Treat), 
+                    method = "pairwise", 
+                    adjust = "none") |>
+  as.data.frame() |> 
+  mutate(PND = 4) |>
+  select(`contrast`, `p.value`, `PND`)
+
+post_hoc_h1_list <- 
+  run_posthoc_test_num_h1(
+    data = data |> 
+      mutate(PND = 4, Animal = as.factor(seq_len(n())),
+             Treatment = Treat), 
+    var = vars[1], 
+    p_list_3 = p_list_3,
+    p_list_2 = p_list_2) |>
+  select(-PND)
+
+post_hoc_h2_list <- 
+  run_posthoc_test_num_h2(
+    data = data |> 
+      mutate(PND = 4, Animal = as.factor(seq_len(n())),
+             Treatment = Treat), 
+    var = vars[1], 
+    p_list_3 = p_list_3,
+    p_list_2 = p_list_2) |>
+  select(-PND)
   
-formatted_summary_df |> kable(format = "markdown",style = "ccc", caption = "Summary Estiamted table on regression analysis")
+formatted_summary_df |> 
+  kable(format = "markdown",
+        style = "ccc", 
+        caption = "Summary Estiamted table on regression analysis")
 
 merged_summary_df = formatted_summary_df
 ```
@@ -278,3 +305,12 @@ ggplot(data, aes(x = Treat, y = `Discirmination Index`, fill = Sex)) +
   geom_jitter()
 ```
 
+## Post-Hoc Comparison on Treatment
+
+```{r results='asis'}
+post_hoc_h1_list |> kable(format = "markdown",style = "ccc", caption = "Post Hoc Comparison on regression analysis result - Primary Hypothesis")
+```
+
+```{r results='asis'}
+post_hoc_h2_list |> kable(format = "markdown",style = "ccc", caption = "Post Hoc Comparison on regression analysis result - Secondary Hypothesis")
+```
