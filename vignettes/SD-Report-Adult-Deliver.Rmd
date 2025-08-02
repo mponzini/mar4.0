@@ -208,6 +208,17 @@ post_hoc_h1_list <- list()
 post_hoc_h2_list <- list()
 plot_list <- list()
 
+data = data |>
+      dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
+    )
+
 # Main loop
 for (i in 1:4) {
   var <- vars[i]

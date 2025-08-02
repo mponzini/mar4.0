@@ -63,7 +63,7 @@ adjust_p_by_pnd <- function(
     p_col = "p.value",
     group_col = "PND",
     contrast_col = "contrast",
-    control = "Adjuvant+Saline",
+    control = "Control",
     method = "hochberg"
 ) {
   stopifnot(all(c(p_col, contrast_col) %in% names(data)))
@@ -71,8 +71,8 @@ adjust_p_by_pnd <- function(
 
   out <- data %>%
     dplyr::mutate(
-      is_control_contrast = stringr::str_detect(.data[[contrast_col]], "Adjuvant\\+Saline") &
-        !stringr::str_detect(.data[[contrast_col]], "^\\(Adjuvant\\+Saline\\) - \\(Adjuvant\\+Saline\\)$")
+      is_control_contrast = stringr::str_detect(.data[[contrast_col]], "Control") &
+        !stringr::str_detect(.data[[contrast_col]], "^\\(Control\\) - \\(Control\\)$")
     )
 
   if (group_ok) {

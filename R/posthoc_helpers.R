@@ -109,7 +109,7 @@ make_posthoc_flextable <- function(
 #'
 #' @export
 #'
-run_posthoc_test_cat_h1 <- function(data, var, p_list_3, p_list_2, control_group = "Adjuvant+Saline") {
+run_posthoc_test_cat_h1 <- function(data, var, p_list_3, p_list_2, control_group = "Control") {
   results_list <- list()
 
   for (pnd in unique(data$PND)) {
@@ -192,7 +192,7 @@ run_posthoc_test_cat_h1 <- function(data, var, p_list_3, p_list_2, control_group
 #'
 #' @export
 #'
-run_posthoc_test_cat_h2 <- function(data, var, p_list_3, p_list_2, control_group = "Adjuvant+Saline") {
+run_posthoc_test_cat_h2 <- function(data, var, p_list_3, p_list_2, control_group = "Control") {
   results_list <- list()
 
   for (pnd in unique(data$PND)) {
@@ -280,7 +280,7 @@ stars
 #'
 #' @export
 #'
-run_posthoc_test_num_h1 <- function(data, var, p_list_3, p_list_2, control_group = "Adjuvant+Saline") {
+run_posthoc_test_num_h1 <- function(data, var, p_list_3, p_list_2, control_group = "Control") {
 
   data <- data %>%
     mutate(across(c(PND, Treatment, Animal), as.factor))
@@ -357,7 +357,7 @@ run_posthoc_test_num_h1 <- function(data, var, p_list_3, p_list_2, control_group
 #'
 #' @export
 #'
-run_posthoc_test_num_h2 <- function(data, var, p_list_3, p_list_2, exclude_control = "Adjuvant+Saline") {
+run_posthoc_test_num_h2 <- function(data, var, p_list_3, p_list_2, exclude_control = "Control") {
 
   data <- data %>%
     mutate(across(c(PND, Treatment, Animal), as.factor))

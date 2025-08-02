@@ -177,6 +177,15 @@ for (i in 1:length(vars)) {
       Litter = factor(`Litter ID`),
       Animal = factor(`Animal ID`),
       PND = factor(PND, levels = c(4, 8, 12), ordered = TRUE)
+    )  |>
+    dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
   
@@ -275,6 +284,34 @@ for (i in 1:length(vars)) {
 }
 ```
 
+```{r eval = FALSE}
+#
+library(patchwork)
+
+# Combine plots into a 2x2 layout and collect the legend
+p_callc <- plot_list[[1]]  + labs(title = "(a) Call Count at Week12")
+p_nsoc <- plot_list[[1]]  + labs(title = "(b) Total Duration Non-Social at PND103") + theme(legend.position = "none")
+p_ttplay <- plot_list[[2]]  + labs(title = "(c) Total Duration of Play at PND103 ") + theme(legend.position = "none")
+
+legend <- cowplot::get_legend(
+  p_callc
+)
+p_callc_12w = p_callc + theme(legend.position = "none")
+
+combined_plot <- (p_callc_12w | p_nsoc | p_ttplay) +
+  theme_classic(base_size = 10) &
+  theme(
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10),
+    plot.title = element_text(size = 10, face = "bold", hjust = 0),
+    strip.text = element_text(size = 10)
+  )
+
+combined_plot
+```
 
 # Background
 

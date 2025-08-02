@@ -9,7 +9,7 @@ run_posthoc_test_num_h2(
   var,
   p_list_3,
   p_list_2,
-  exclude_control = "Adjuvant+Saline"
+  exclude_control = "Control"
 )
 }
 \arguments{

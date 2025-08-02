@@ -9,7 +9,7 @@ adjust_p_by_pnd(
   p_col = "p.value",
   group_col = "PND",
   contrast_col = "contrast",
-  control = "Adjuvant+Saline",
+  control = "Control",
   method = "hochberg"
 )
 }

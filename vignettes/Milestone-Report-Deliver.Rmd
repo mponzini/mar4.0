@@ -188,6 +188,15 @@ for (i in vars_numeric) {
       Animal = factor(`Animal ID`),
       PND = factor(PND, levels = c(4, 8, 12), ordered = TRUE)
     ) |>
+    dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
+    ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
   
   # If working on the variable with 30s max recording, trimming those equal to 30s
@@ -302,11 +311,21 @@ for (i in vars_binary) {
       Sex = factor(Sex, levels = c("M", "F")),
       Litter = factor(`Litter ID`),
       Animal = factor(`Animal ID`)
+    ) |> 
+    dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
     ) |>
     dplyr::filter(dplyr::if_all(c(Animal, Litter, Treatment, Sex, PND, !!sym(var)), ~ !is.na(.x)))
   
   if (model_type == "glm"){
     data_fct_compete = data_fct_compete |> filter(PND == 12)
+    
     # Fit models
     formula1 <-  paste0("`", var, "` ~ `Treatment` + `Sex` + `Treatment`*`Sex` ")
     formula2 <-  paste0("`", var, "` ~ `Treatment` + `Sex` ")
@@ -410,20 +429,23 @@ for (i in vars_survival) {
       Sex = factor(Sex, levels = c("M", "F")),
       `Litter ID` = as.factor(`Litter ID`)
       ) |> 
-    na.omit()
+    na.omit()  |>
+    dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
+    )
 
   # Run Cox model and extract tidy summary with exponentiation coefficients (hazard ratios)
   pnd_results <- list()
   pnd_km_plots <- list()
   for (pnd_val in c("4", "8", "12")) {
     data_subset <- data_survival |> 
-      filter(PND == pnd_val) |> 
-      mutate(
-        Treatment = forcats::fct_recode(
-          Treatment,
-          "4+Drug+Combo" = "LDHA+LDHB+CRMP1+STIP1"
-          )
-        )
+      filter(PND == pnd_val)
     if (nrow(data_subset) > 0) {  # Only fit if there's data
       formula_fit <- paste0("Surv(`", var, "`, censor) ~ Treatment + Sex + frailty(`Litter ID`)") |>
         as.formula()
@@ -517,6 +539,36 @@ for (i in vars_survival) {
     make_posthoc_flextable(metric = "HR")
 }
 ```
+
+```{r eval = FALSE}
+#
+library(patchwork)
+
+# Combine plots into a 2x2 layout and collect the legend
+p_a <- plot_list[[6]]  + labs(title = "(a) Righting Reflex")
+p_b <- plot_list[[10]] + labs(title = "(b) Negative Geotaxis")
+p_c <- plot_list[[1]]  + labs(title = "(c) Body Weight")
+p_d <- plot_list[[4]]  + labs(title = "(d) Body Length")
+
+# Combine in 2x2 layout with shared legend
+combined_plot <- (p_a | p_b) /
+                 (p_c | p_d) +
+  plot_layout(guides = "collect") +
+  theme_classic(base_size = 10) &  # global font size 10
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10),
+    plot.title = element_text(size = 10, face = "bold", hjust = 0),
+    strip.text = element_text(size = 10)  # if faceted
+  )
+
+combined_plot
+```
+
 
 # Background
 

@@ -9,7 +9,7 @@ run_posthoc_test_cat_h2(
   var,
   p_list_3,
   p_list_2,
-  control_group = "Adjuvant+Saline"
+  control_group = "Control"
 )
 }
 \arguments{

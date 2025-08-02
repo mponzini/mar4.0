@@ -25,16 +25,7 @@ create_meanplot <- function(
   dataset <- dataset |>
     dplyr::rename(y_plot = !!rlang::sym(variable)) |>
     dplyr::mutate(y_plot = as.numeric(.data$y_plot)) |>
-    dplyr::filter(!is.na(y_plot)) |>
-    dplyr::mutate(
-      !!rlang::sym(treatment) :=
-        factor(
-          .data[[treatment]],
-          levels = sort(unique(as.character(.data[[treatment]]))),
-          ordered = TRUE
-        )
-    )
-
+    dplyr::filter(!is.na(y_plot))
 
   has_PND <- "PND" %in% names(dataset)
 
@@ -46,13 +37,14 @@ create_meanplot <- function(
     desc_stat = "mean_ci",
     color = strata,
     shape = strata,
-    palette = c("#022851", "#FFBF00"),
+    palette = c("#0066A1", "#FFBF00"),
     position = ggplot2::position_dodge(0.5),
     xlab = xlab,
     ylab = ylab,
     error.plot = "errorbar",
     add = "mean",
-    width = 0.3
+    add.params = list(size = 0.3),
+    width = 0.5
   ) +
     ggplot2::theme_classic(base_size = 14) +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -183,7 +175,8 @@ create_meanplot <- function(
       dplyr::mutate(
         group1 = "M",
         group2 = "F",
-        p.signif = stars(.data$p.adj)
+        p.signif = stars(.data$p.adj),
+        Treatment = factor(Treatment, levels = levels(summary_data_$Treatment), ordered = TRUE)
       ) |>
       dplyr::left_join(summary_data_, by = if (has_PND) c("PND", "Treatment" = treatment) else c("Treatment" = treatment)) |>
       dplyr::left_join(y_step_vec, by = if (has_PND) "PND" else character()) |>
