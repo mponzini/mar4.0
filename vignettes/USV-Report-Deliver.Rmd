@@ -289,9 +289,10 @@ for (i in 1:length(vars)) {
 library(patchwork)
 
 # Combine plots into a 2x2 layout and collect the legend
-p_callc <- plot_list[[1]]  + labs(title = "(a) Call Count at Week12")
-p_nsoc <- plot_list[[1]]  + labs(title = "(b) Total Duration Non-Social at PND103") + theme(legend.position = "none")
-p_ttplay <- plot_list[[2]]  + labs(title = "(c) Total Duration of Play at PND103 ") + theme(legend.position = "none")
+p_callc <- plot_list[[1]]  + labs(title = "(a)")
+p_nsoc <- plot_list[[1]]  + labs(title = "(b)") + 
+  theme(legend.position = "none")
+p_ttplay <- plot_list[[2]]  + labs(title = "(c)") + theme(legend.position = "none")
 
 legend <- cowplot::get_legend(
   p_callc
@@ -301,7 +302,7 @@ p_callc_12w = p_callc + theme(legend.position = "none")
 combined_plot <- (p_callc_12w | p_nsoc | p_ttplay) +
   theme_classic(base_size = 10) &
   theme(
-    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    axis.text.x = element_text(size = 10, angle = 60, hjust = 1),
     axis.text.y = element_text(size = 10),
     axis.title = element_text(size = 10),
     legend.text = element_text(size = 10),
@@ -311,6 +312,8 @@ combined_plot <- (p_callc_12w | p_nsoc | p_ttplay) +
   )
 
 combined_plot
+
+ggsave("plot2.png", width =12, height = 7.5, dpi = 300, units = "in")
 ```
 
 # Background

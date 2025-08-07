@@ -25,10 +25,25 @@ create_meanplot <- function(
   dataset <- dataset |>
     dplyr::rename(y_plot = !!rlang::sym(variable)) |>
     dplyr::mutate(y_plot = as.numeric(.data$y_plot)) |>
-    dplyr::filter(!is.na(y_plot))
+    dplyr::filter(!is.na(y_plot)) |>
+    dplyr::mutate(
+      !!treatment :=
+        factor(
+          .data[[treatment]],
+          levels = c("LDHA/B+CRMP1+STIP1", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "Control"),
+          ordered = TRUE,
+          labels = c("LDHA/B+CRMP1+STIP1", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "Control")
+        ),
+      !!strata :=
+        factor(.data[[strata]],
+               levels = c("F", "M"),
+               ordered = TRUE,
+               labels = c("F", "M"))
+    ) #|>
+    # dplyr::filter(PND == 12)
 
   has_PND <- "PND" %in% names(dataset)
-
+  # has_PND <- F
   # Plot
   plot <- ggpubr::ggerrorplot(
     dataset,
@@ -47,7 +62,7 @@ create_meanplot <- function(
     width = 0.5
   ) +
     ggplot2::theme_classic(base_size = 14) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 60, hjust = 1))
 
   # Conditionally add facet_wrap if 'PND' column exists
   if (has_PND) {

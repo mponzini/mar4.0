@@ -545,10 +545,10 @@ for (i in vars_survival) {
 library(patchwork)
 
 # Combine plots into a 2x2 layout and collect the legend
-p_a <- plot_list[[6]]  + labs(title = "(a) Righting Reflex")
-p_b <- plot_list[[10]] + labs(title = "(b) Negative Geotaxis")
-p_c <- plot_list[[1]]  + labs(title = "(c) Body Weight")
-p_d <- plot_list[[4]]  + labs(title = "(d) Body Length")
+p_a <- plot_list[[6]]  + labs(title = "(a)")
+p_b <- plot_list[[10]] + labs(title = "(b)")
+p_c <- plot_list[[1]]  + labs(title = "(c)")
+p_d <- plot_list[[4]]  + labs(title = "(d)")
 
 # Combine in 2x2 layout with shared legend
 combined_plot <- (p_a | p_b) /
@@ -557,7 +557,7 @@ combined_plot <- (p_a | p_b) /
   theme_classic(base_size = 10) &  # global font size 10
   theme(
     legend.position = "bottom",
-    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    axis.text.x = element_text(size = 10, angle = 60, hjust = 1),
     axis.text.y = element_text(size = 10),
     axis.title = element_text(size = 10),
     legend.text = element_text(size = 10),
@@ -567,6 +567,8 @@ combined_plot <- (p_a | p_b) /
   )
 
 combined_plot
+
+ggsave("plot1.png", width =12, height = 15, dpi = 300, units = "in")
 ```
 
 
