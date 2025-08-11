@@ -36,9 +36,9 @@ create_meanplot <- function(
         ),
       !!strata :=
         factor(.data[[strata]],
-               levels = c("F", "M"),
+               levels = c("M", "F"),
                ordered = TRUE,
-               labels = c("F", "M"))
+               labels = c("M", "F"))
     ) #|>
     # dplyr::filter(PND == 12)
 
