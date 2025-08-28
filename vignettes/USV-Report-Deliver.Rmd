@@ -289,10 +289,12 @@ for (i in 1:length(vars)) {
 library(patchwork)
 
 # Combine plots into a 2x2 layout and collect the legend
-p_callc <- plot_list[[1]]  + labs(title = "(a)")
-p_nsoc <- plot_list[[1]]  + labs(title = "(b)") + 
+p_callc <- plot_list[[1]]  + labs(title = "(a)", y = "Number of Calls") +
+  theme(plot.margin = margin(l = 5))
+p_nsoc <- plot_list[[1]]  + labs(title = "(b)", y = "Non-social Behavior Duration (s)") + 
+  theme(legend.position = "none", plot.margin = margin(l = 10, r = 10))
+p_ttplay <- plot_list[[2]]  + labs(title = "(c)", y = "Play Behavior Duration (s)") + 
   theme(legend.position = "none")
-p_ttplay <- plot_list[[2]]  + labs(title = "(c)") + theme(legend.position = "none")
 
 legend <- cowplot::get_legend(
   p_callc

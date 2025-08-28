@@ -24,7 +24,7 @@ create_meanplot <- function(
   # Rename variable to y_plot for safe handling
   dataset <- dataset |>
     dplyr::rename(y_plot = !!rlang::sym(variable)) |>
-    dplyr::mutate(y_plot = as.numeric(.data$y_plot)) |>
+    dplyr::mutate(y_plot = as.numeric(as.character(.data$y_plot))) |>
     dplyr::filter(!is.na(y_plot)) |>
     dplyr::mutate(
       !!treatment :=
@@ -52,7 +52,7 @@ create_meanplot <- function(
     desc_stat = "mean_ci",
     color = strata,
     shape = strata,
-    palette = c("#0066A1", "#FFBF00"),
+    palette = c("#2B6CB0", "#E53E3E"),
     position = ggplot2::position_dodge(0.5),
     xlab = xlab,
     ylab = ylab,
