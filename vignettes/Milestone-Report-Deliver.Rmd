@@ -266,7 +266,7 @@ for (i in vars_numeric) {
     as.data.frame() |> 
     mutate(PND = gsub("\\D", "", PND))
   
-  p_list_sex <- emmeans::contrast(emmeans::emmeans(mix_aov_3way, ~ Sex|PND * Treatment), 
+  p_list_sex <- emmeans::contrast(emmeans::emmeans(mix_aov_2way, ~ Sex|PND * Treatment), 
                                 method = "pairwise", 
                                 adjust = "none") |>
     as.data.frame() |> 
@@ -289,7 +289,7 @@ for (i in vars_numeric) {
   plot_list[[i]] <- create_meanplot(
     dataset = data_fct_compete,
     variable = var, 
-    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p = p_list_2 |> adjust_p_by_pnd(),
     contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 }
 ```
@@ -388,7 +388,7 @@ for (i in vars_binary) {
       as.data.frame() |> 
       mutate(PND = gsub("\\D", "", PND))
   }
-
+    
   post_hoc_h1_list[[i]] <- run_posthoc_test_cat_h1(
     data = data_fct_compete, 
     var = var,
@@ -406,7 +406,7 @@ for (i in vars_binary) {
   plot_list[[i]] <- create_meanplot(
     dataset = data_fct_compete,
     variable = var, 
-    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p = p_list_2 |> adjust_p_by_pnd(),
     contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 }
 ```

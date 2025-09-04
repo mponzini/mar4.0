@@ -27,7 +27,7 @@ tab_n = 0
 sd_data = sd_juv |>
   rename(Treatment = Treat) |>
   left_join(weights |> 
-              filter(Week == 15) |> 
+              filter(Week == 5) |> 
               select(`Animal ID`,Weights), 
             by = "Animal ID") |>
   mutate(`Total number Grooming Self` = as.numeric(`Total number Grooming Self`),
@@ -208,6 +208,17 @@ post_hoc_h1_list <- list()
 post_hoc_h2_list <- list()
 plot_list <- list()
 
+data = data |>
+      dplyr::mutate(
+      Treatment :=
+        factor(
+          Treatment,
+          levels = c("Adjuvant+Saline", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA+LDHB+CRMP1+STIP1"),
+          ordered = TRUE,
+          labels = c("Control", "CRMP1+CRMP2", "CRMP1+GDA", "STIP1+NSE", "LDHA/B+CRMP1+STIP1")
+        )
+    )
+
 # Main loop
 for (i in 1:4) {
   var <- vars[i]
@@ -264,7 +275,7 @@ for (i in 1:4) {
   plot_list[[i]] <- create_meanplot(
     dataset = data,
     variable = var, 
-    contrast_p = p_list_3 |> adjust_p_by_pnd(),
+    contrast_p = p_list_2 |> adjust_p_by_pnd() |> select(-PND),
     contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 }
 
@@ -288,7 +299,7 @@ p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "p
   as.data.frame() |> 
   mutate(PND = 4) |>
   select(`contrast`, `p.value`, `PND`)
-p_list_sex <- emmeans::contrast(emmeans::emmeans(model1, ~ Sex|Treatment), 
+p_list_sex <- emmeans::contrast(emmeans::emmeans(model2, ~ Sex|Treatment), 
                                 method = "pairwise", 
                                 adjust = "none") |>
   as.data.frame()
@@ -305,7 +316,7 @@ post_hoc_h2_list[[5]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, 
 plot_list[[5]] <- create_meanplot(
   dataset = data,
   variable = vars[5], 
-  contrast_p = p_list_3 |> adjust_p_by_pnd(),
+  contrast_p = p_list_2 |> adjust_p_by_pnd(),
   contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 
 # #6 Total number Grooming Self
@@ -327,7 +338,7 @@ p_list_2 <- emmeans::contrast(emmeans::emmeans(model2, ~ Treatment), method = "p
   as.data.frame() |> 
   mutate(PND = 4) |>
   select(`contrast`, `p.value`, `PND`)
-p_list_sex <- emmeans::contrast(emmeans::emmeans(model1, ~ Sex|Treatment), 
+p_list_sex <- emmeans::contrast(emmeans::emmeans(model2, ~ Sex|Treatment), 
                                 method = "pairwise", 
                                 adjust = "none") |>
   as.data.frame()
@@ -344,7 +355,7 @@ post_hoc_h2_list[[6]] <- run_posthoc_test_num_h2(data = data |> mutate(PND = 4, 
 plot_list[[6]] <- create_meanplot(
   dataset = data,
   variable = vars[6], 
-  contrast_p = p_list_3 |> adjust_p_by_pnd(),
+  contrast_p = p_list_2 |> adjust_p_by_pnd(),
   contrast_p_sex = p_list_sex |> adjust_p_by_pnd())
 
 usv_anova_tb = usv_anova_tb |> 
