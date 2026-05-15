@@ -1,0 +1,737 @@
+---
+title: "Cytokine–Behavior Correlation Analysis"
+subtitle: "MAR 4.0 — Brain Section × Treatment Group"
+output:
+  bookdown::html_document2:
+    number_section: false
+    toc: true
+    toc_depth: 2
+    df_print: paged
+    fig_caption: true
+  bookdown::word_document2:
+    number_section: false
+    reference_docx: docx_landscape.docx
+date: "`r Sys.Date()`"
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dpi = 300,
+  out.width = "95%"
+)
+devtools::load_all()
+pacman::p_load(
+  dplyr, tidyr, purrr, tibble, stringr, ggplot2, ggcorrplot,
+  ppcor, broom, flextable, mar4.0
+)
+
+set_flextable_defaults(
+  font.family = "Arial",
+  font.size = 9,
+  theme_fun = flextable::theme_vanilla
+)
+
+fig_n <- 0
+tab_n <- 0
+```
+
+# Introduction
+
+This report examines whether brain cytokine and chemokine levels measured at
+postnatal day 150 are associated with behavioral outcomes in the MAR 4.0
+cohort.  Animals received one of five maternal antibody treatments, and prior
+analyses identified cytokine concentrations that differ significantly from the
+Adjuvant+Saline control.  Here we ask whether those brain immune signals
+correlate with performance across a broad behavioral battery — elevated-plus
+maze, novel object recognition, social interaction, ultrasonic vocalizations,
+developmental milestones, and postnatal weight gain — and whether any such
+associations are specific to particular treatment groups or brain sections.
+
+# Methods
+
+**Data.** Brain cytokine concentrations were drawn from the `brain` dataset
+(27 analytes; PND150 tissue).  Each animal contributed up to three samples
+corresponding to distinct anatomical sections (A, B, C); the section letter
+is encoded as a trailing character of the sample ID (e.g., `"9_10_1A"`).
+Because sections represent different brain regions they are analyzed
+independently.  Behavioral data originated from seven assays — EPM, NOR,
+juvenile and adult social dyad, USV, developmental milestones, and body
+weight — each collapsed to one row per animal.  Animals were matched to brain
+cytokine data via their unique animal ID.
+
+**Groups.** Analyses were conducted in two complementary ways.  First, all
+treatment groups were pooled within each brain section (A, B, C) to maximise
+statistical power for detecting overall cytokine–behavior associations.  Second,
+the same correlations were repeated separately for each of the five treatment
+groups — Adjuvant+Saline (control), LDHA+LDHB+CRMP1+STIP1, CRMP1+CRMP2,
+CRMP1+GDA, and STIP1+NSE — to identify associations that may be specific to a
+particular antibody exposure.
+
+**Statistical approach.** Spearman rank correlations were used throughout
+(robust to skew and outliers common in cytokine and behavioral data).
+For each brain section, every cytokine was paired against
+every numeric behavioral outcome (~810 pairs per section).
+P-values were adjusted for multiple testing within each section
+using the Benjamini–Hochberg false-discovery rate (FDR).  A sensitivity
+analysis repeated significant associations (FDR < 0.10) as partial Spearman
+correlations controlling for sex.
+
+```{r config, include=FALSE}
+# All 27 analyte columns from the brain dataset.
+sig_cytokines <- c(
+  "G_CSF", "Eotaxin", "GM_CSF", "IL_1a", "Leptin", "MIP_1a",
+  "IL_4", "IL_1b", "IL_2", "IL_6", "EGF", "IL_13",
+  "IL_10", "IL_12p70", "IFNg", "IL_5", "IL_17a", "IL_18",
+  "MCP_1", "IP_10", "GRO", "VEGF", "Fractalkine", "LIX",
+  "MIP_2", "TNFa", "Rantes"
+)
+
+# Treatment groups present in the data (used for stratified analysis)
+groups_to_analyze <- c(
+  "Adjuvant+Saline",
+  "LDHA+LDHB+CRMP1+STIP1",
+  "CRMP1+CRMP2",
+  "CRMP1+GDA",
+  "STIP1+NSE"
+)
+
+# Minimum sample size to report a correlation
+min_n <- 2
+```
+
+```{r brain_prep, include=FALSE}
+# Extract the section letter (last character of Sample) and the base animal ID
+brain_parsed <- brain |>
+  dplyr::mutate(
+    Section_letter = stringr::str_sub(Sample, -1, -1),   # "A", "B", or "C"
+    `Animal ID`    = stringr::str_sub(Sample, 1, -2),    # strip trailing letter
+    `Litter ID`    = Dam,
+    Treat          = Treatment
+  ) |>
+  dplyr::select(
+    `Animal ID`, `Litter ID`, Sex, Treat, Section_letter,
+    dplyr::all_of(sig_cytokines)
+  )
+
+# One table per brain section
+brain_sections <- split(brain_parsed, brain_parsed$Section_letter)
+# Each element is a tibble with columns:
+#   Animal ID, Litter ID, Sex, Treat, Section_letter, <cytokines>
+section_labels <- sort(names(brain_sections))   # e.g. c("A","B","C")
+```
+
+```{r behavior_summaries, include=FALSE}
+epm_s <- epm |>
+  # `Time Spend Open Arms (%)` is derived at report time (see EPM-Report-Deliver.Rmd)
+  dplyr::mutate(`Time Spend Open Arms (%)` = 1 - Preference) |>
+  dplyr::select(
+    `Animal ID`, `Litter ID`, Sex, Treat,
+    `Open Arms`, `Closed Arms`, `Enter Open Arms`,
+    `Time Spend Open Arms (%)`, `SUM CHECK`
+  )
+
+nor_s <- nor |>
+  dplyr::group_by(`Animal ID`, `Litter ID`, Sex, Treat) |>
+  dplyr::summarise(
+    `NOR Discrimination Index` = mean(`Discirmination Index`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sd_juv_s <- sd_juv |>
+  dplyr::select(
+    `Animal ID`, `Litter ID`, Sex, Treat,
+    dplyr::starts_with("Total duration"),
+    dplyr::starts_with("Total number")
+  ) |>
+  dplyr::rename_with(
+    ~ paste0(.x, " (juv)"),
+    c(dplyr::starts_with("Total duration"),
+      dplyr::starts_with("Total number"))
+  )
+
+sd_adult_s <- sd_adult |>
+  dplyr::select(
+    `Animal ID`, `Litter ID`, Sex, Treat,
+    dplyr::starts_with("Total duration"),
+    dplyr::starts_with("Total number")
+  ) |>
+  dplyr::rename_with(
+    ~ paste0(.x, " (adult)"),
+    c(dplyr::starts_with("Total duration"),
+      dplyr::starts_with("Total number"))
+  )
+
+usv_s <- usv |>
+  # usv uses `Treatment` (not Treat); rename for consistency before summarising
+  dplyr::rename(Treat = Treatment) |>
+  dplyr::group_by(`Animal ID`, `Litter ID`, Sex, Treat) |>
+  dplyr::summarise(
+    `USV Count (total)`      = sum(Count, na.rm = TRUE),
+    `USV Call Length (mean)` = mean(`Call Length`, na.rm = TRUE),
+    `USV Mean Power (mean)`  = mean(`Mean Power`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ms_s <- milestones |>
+  # milestones also uses `Treatment`
+  dplyr::rename(Treat = Treatment) |>
+  dplyr::group_by(`Animal ID`, `Litter ID`, Sex, Treat) |>
+  dplyr::summarise(
+    dplyr::across(
+      c(`Body Length`, `Body Weight`, `Righting Reflex`,
+        `Circle Traverse`, `Negative Geotaxis`, `Cliff Avoidance`),
+      ~ mean(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  )
+
+wt_s <- weights |>
+  dplyr::rename(Treat = Treatment) |>
+  dplyr::group_by(`Animal ID`, `Litter ID`, Sex, Treat) |>
+  dplyr::summarise(
+    `Weight slope (g/wk)` = if (sum(!is.na(Weights)) >= 3) {
+      unname(coef(stats::lm(Weights ~ Week))[2])
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  )
+
+# Merge: for each brain section, join the cytokine table to all behavior tables.
+beh_list <- list(
+  epm      = epm_s,
+  nor      = nor_s,
+  sd_juv   = sd_juv_s,
+  sd_adult = sd_adult_s,
+  usv      = usv_s,
+  ms       = ms_s,
+  wt       = wt_s
+)
+
+# strip Sex/Treat/Litter ID from each behavior table before merging
+# (brain section tables carry those columns)
+beh_list_clean <- purrr::map(
+  beh_list,
+  ~ dplyr::select(.x, -dplyr::any_of(c("Sex", "Treat", "Litter ID")))
+)
+
+# Build one wide table per brain section
+wide_by_section <- purrr::map(
+  brain_sections,
+  function(brain_sec) {
+    purrr::reduce(
+      c(
+        list(dplyr::select(brain_sec, -Section_letter)),
+        beh_list_clean
+      ),
+      ~ dplyr::left_join(.x, .y, by = "Animal ID")
+    )
+  }
+)
+
+# identify variable groups (same for every section)
+cyto_vars <- sig_cytokines
+# restrict to numeric columns only (exclude ID/grouping columns and any
+# character/factor columns that may have been joined in)
+beh_vars  <- wide_by_section[[1]] |>
+  dplyr::select(-dplyr::all_of(c("Animal ID", "Litter ID", "Sex", "Treat")),
+                -dplyr::all_of(cyto_vars)) |>
+  dplyr::select(dplyr::where(is.numeric)) |>
+  names()
+```
+
+```{r within_group_cor, include=FALSE}
+run_cor <- function(cx, bx, data, min_n = 10) {
+  d <- data |>
+    dplyr::select(dplyr::all_of(c(cx, bx))) |>
+    tidyr::drop_na()
+  # skip if either column is not numeric (safety guard)
+  if (!is.numeric(d[[1]]) || !is.numeric(d[[2]])) {
+    return(tibble::tibble(n = nrow(d), rho = NA_real_, p = NA_real_))
+  }
+  if (nrow(d) < min_n) {
+    return(tibble::tibble(n = nrow(d), rho = NA_real_, p = NA_real_))
+  }
+  ct <- suppressWarnings(
+    stats::cor.test(d[[1]], d[[2]], method = "spearman")
+  )
+  tibble::tibble(n = nrow(d), rho = unname(ct$estimate), p = ct$p.value)
+}
+
+# Optimized: use mapply instead of nested purrr for speed
+# This runs ~3-5x faster than map2
+pairs_by_group <- purrr::map_dfr(
+  section_labels,
+  function(sec) {
+    wide <- wide_by_section[[sec]]
+    
+    # Get unique treatment groups in this section's data
+    unique_groups <- unique(wide$Treat)
+    
+    purrr::map_dfr(
+      unique_groups,
+      function(grp) {
+        d_grp <- wide |> dplyr::filter(Treat == grp)
+        n_rows <- nrow(d_grp)
+        
+        if (n_rows == 0) {
+          return(tibble::tibble())
+        }
+
+        # Create all pairs
+        pair_df <- tidyr::expand_grid(cytokine = cyto_vars, behavior = beh_vars)
+        
+        # Run correlations using mapply (faster than purrr::map2)
+        cor_results <- mapply(
+          function(cx, bx) {
+            run_cor(cx, bx, d_grp, min_n = min_n)
+          },
+          pair_df$cytokine,
+          pair_df$behavior,
+          SIMPLIFY = FALSE
+        )
+        
+        # Bind results
+        pair_df |>
+          dplyr::mutate(
+            section = sec,
+            group = grp
+          ) |>
+          dplyr::bind_cols(
+            dplyr::bind_rows(cor_results)
+          )
+      }
+    )
+  }
+) |>
+  # FDR within each (section, group) combination
+  dplyr::group_by(section, group) |>
+  dplyr::mutate(fdr = stats::p.adjust(p, method = "BH")) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(section, group, fdr, p)
+```
+
+```{r partial_within_group, include=FALSE}
+# Empty-safe schema for the partial-correlation output so that downstream
+# joins never fail when zero pairs meet the FDR filter.
+empty_partial <- tibble::tibble(
+  section   = character(),
+  cytokine  = character(),
+  behavior  = character(),
+  pcor      = numeric(),
+  p_partial = numeric(),
+  n_partial = integer()
+)
+
+# Build pooled-by-section correlations here if not already available.
+if (!exists("pairs_by_section")) {
+  pairs_by_section <- purrr::map_dfr(
+    section_labels,
+    function(sec) {
+      wide <- wide_by_section[[sec]]
+      pair_df <- tidyr::expand_grid(cytokine = cyto_vars, behavior = beh_vars)
+      cor_results <- mapply(
+        function(cx, bx) run_cor(cx, bx, wide, min_n = min_n),
+        pair_df$cytokine,
+        pair_df$behavior,
+        SIMPLIFY = FALSE
+      )
+      pair_df |>
+        dplyr::mutate(section = sec) |>
+        dplyr::bind_cols(dplyr::bind_rows(cor_results))
+    }
+  ) |>
+    dplyr::group_by(section) |>
+    dplyr::mutate(fdr = stats::p.adjust(p, method = "BH")) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(section, fdr, p)
+}
+
+partial_candidates <- pairs_by_section |>
+  dplyr::filter(!is.na(p), fdr < 0.10)
+
+if (nrow(partial_candidates) == 0) {
+  partial_by_section <- empty_partial
+} else {
+  partial_by_section <- partial_candidates |>
+    dplyr::mutate(
+      pc = purrr::pmap(
+        list(cytokine, behavior, section),
+        function(cx, bx, sec) {
+          d <- wide_by_section[[sec]] |>
+            dplyr::select(dplyr::all_of(c(cx, bx, "Sex"))) |>
+            dplyr::mutate(Sex = as.integer(factor(Sex))) |>
+            tidyr::drop_na()
+          if (nrow(d) < min_n) {
+            return(tibble::tibble(pcor = NA_real_, p_partial = NA_real_,
+                                  n_partial = nrow(d)))
+          }
+          r <- tryCatch(
+            ppcor::pcor.test(d[[cx]], d[[bx]], d$Sex, method = "spearman"),
+            error = function(e) NULL
+          )
+          if (is.null(r)) {
+            return(tibble::tibble(pcor = NA_real_, p_partial = NA_real_,
+                                  n_partial = nrow(d)))
+          }
+          tibble::tibble(pcor = r$estimate, p_partial = r$p.value,
+                         n_partial = nrow(d))
+        }
+      )
+    ) |>
+    tidyr::unnest(pc) |>
+    dplyr::select(section, cytokine, behavior, pcor, p_partial, n_partial)
+}
+```
+
+# Results
+
+```{r pairs_by_section, include=FALSE}
+# Compute correlations within each section (pooling across all treatment groups)
+pairs_by_section <- purrr::map_dfr(
+  section_labels,
+  function(sec) {
+    wide <- wide_by_section[[sec]]
+
+    pair_df <- tidyr::expand_grid(cytokine = cyto_vars, behavior = beh_vars)
+
+    cor_results <- mapply(
+      function(cx, bx) {
+        run_cor(cx, bx, wide, min_n = min_n)
+      },
+      pair_df$cytokine,
+      pair_df$behavior,
+      SIMPLIFY = FALSE
+    )
+
+    pair_df |>
+      dplyr::mutate(section = sec) |>
+      dplyr::bind_cols(dplyr::bind_rows(cor_results))
+  }
+) |>
+  dplyr::group_by(section) |>
+  dplyr::mutate(fdr = stats::p.adjust(p, method = "BH")) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(section, fdr, p)
+```
+
+## Heatmaps — cytokine × behavior correlations by brain section (pooled)
+
+Each tile shows the Spearman rho for one cytokine–behavior pair, computed
+across all treatment groups pooled within each section.  Tile opacity
+encodes statistical significance: **fully opaque** = p < 0.05; **faint** =
+p > 0.20; values in between are linearly interpolated.  Three plots are
+shown in total (one per brain section: A, B, C).
+
+```{r heatmap, fig.width=16, fig.height=9, dpi=150, out.width='100%'}
+# Alpha encoding:
+#   p < 0.05          -> alpha = 1.0  (fully opaque)
+#   p > 0.20          -> alpha = 0.1  (nearly transparent)
+#   0.05 <= p <= 0.20 -> alpha interpolated linearly between 1.0 and 0.1
+p_to_alpha <- function(p) {
+  dplyr::case_when(
+    is.na(p)  ~ 0.1,
+    p <  0.05 ~ 1.0,
+    p >  0.20 ~ 0.1,
+    TRUE      ~ 1.0 - (p - 0.05) / (0.20 - 0.05) * (1.0 - 0.1)
+  )
+}
+
+plot_section_heatmap <- function(df, sec) {
+  # Filter to section data
+  d_section <- df |>
+    dplyr::filter(section == sec, !is.na(rho))
+
+  if (nrow(d_section) == 0) {
+    return(invisible(NULL))
+  }
+
+  d_section <- d_section |>
+    dplyr::mutate(
+      alpha_val  = p_to_alpha(p),
+      label_text = dplyr::if_else(
+        !is.na(rho), sprintf("%.2f", rho), ""
+      ),
+      behavior_w = stringr::str_wrap(behavior, width = 16)
+    )
+
+  # Keep consistent axis ordering
+  cyto_ord <- sort(unique(d_section$cytokine))
+  beh_ord  <- sort(unique(d_section$behavior_w))
+
+  ggplot2::ggplot(
+    d_section,
+    ggplot2::aes(
+      x    = factor(behavior_w, levels = beh_ord),
+      y    = factor(cytokine,   levels = rev(cyto_ord)),
+      fill = rho,
+      alpha = alpha_val
+    )
+  ) +
+    ggplot2::geom_tile(color = "white", linewidth = 0.25) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = label_text, alpha = alpha_val),
+      size  = 2.2,
+      color = "black"
+    ) +
+    ggplot2::scale_fill_gradient2(
+      low      = "#2166AC",
+      mid      = "white",
+      high     = "#D6604D",
+      midpoint = 0,
+      limits   = c(-1, 1),
+      name     = "Spearman\nrho"
+    ) +
+    ggplot2::scale_alpha_identity() +
+    ggplot2::labs(
+      title    = paste0("Brain Section ", sec),
+      subtitle = paste0(
+        "Pooled across all treatment groups. ",
+        "Fill = Spearman rho; Opacity: p < 0.05 opaque, p > 0.20 faint."
+      ),
+      x = NULL, y = NULL
+    ) +
+    ggplot2::theme_minimal(base_size = 10) +
+    ggplot2::theme(
+      axis.text.x  = ggplot2::element_text(size = 7, angle = 45,
+                                           hjust = 1, vjust = 1),
+      axis.text.y  = ggplot2::element_text(size = 8),
+      legend.position = "right",
+      panel.grid   = ggplot2::element_blank(),
+      plot.title   = ggplot2::element_text(face = "bold", size = 12),
+      plot.margin  = ggplot2::margin(t = 8, r = 12, b = 20, l = 8)
+    )
+}
+
+for (sec in section_labels) {
+  fig_n <- fig_n + 1
+  p <- plot_section_heatmap(pairs_by_section, sec)
+  if (!is.null(p)) {
+    print(p)
+  }
+}
+
+```
+
+## Significant correlations table (pooled)
+
+Pairs meeting FDR < 0.20 by brain section.  The partial rho
+column shows the sensitivity estimate after adjusting for sex; blank cells
+indicate the pair did not survive the FDR < 0.20 filter or had insufficient
+sample size.  The full results table (all pairs) is written to
+`cytokine_behavior_correlations_by_section.csv`.
+
+```{r results_table}
+# Ensure partial_by_section has the expected join columns even when empty.
+partial_for_join <- if (all(c("pcor", "p_partial", "n_partial") %in%
+                           names(partial_by_section))) {
+  partial_by_section |>
+    dplyr::select(section, cytokine, behavior, pcor, p_partial, n_partial)
+} else {
+  tibble::tibble(
+    section   = character(),
+    cytokine  = character(),
+    behavior  = character(),
+    pcor      = numeric(),
+    p_partial = numeric(),
+    n_partial = integer()
+  )
+}
+
+results_tbl <- pairs_by_section |>
+  dplyr::left_join(partial_for_join,
+                   by = c("section", "cytokine", "behavior")) |>
+  dplyr::mutate(
+    dplyr::across(dplyr::any_of(c("rho", "p", "fdr", "pcor", "p_partial")),
+                  ~ signif(.x, 3))
+  ) |>
+  dplyr::arrange(section, fdr, p)
+
+# Full table: write to CSV alongside the rendered report
+readr::write_csv(
+  results_tbl,
+  file = "cytokine_behavior_correlations_by_section.csv"
+)
+
+# Filtered view for the report
+tab_n <- tab_n + 1
+
+table_display <- results_tbl |>
+  dplyr::filter(!is.na(fdr), fdr < 0.20) |>
+  dplyr::select(
+    section, cytokine, behavior, n, rho, p, fdr, pcor, p_partial
+  )
+
+table_n_rows <- nrow(table_display)
+table_caption <- paste0(
+  "Table ", tab_n,
+  ": Spearman correlations with FDR < 0.20 by brain section ",
+  "(n = ", table_n_rows, " rows). Partial rho adjusts for Sex."
+)
+
+table_display |>
+  flextable::flextable() |>
+  flextable::colformat_num(j = c("rho", "p", "fdr", "pcor", "p_partial"),
+                           digits = 3) |>
+  flextable::align(align = "center", part = "all") |>
+  flextable::bold(part = "header") |>
+  flextable::bg(part = "header", bg = "#E8EEF6") |>
+  flextable::set_caption(table_caption) |>
+  flextable::autofit()
+```
+
+## Heatmaps — cytokine × behavior correlations by treatment group
+
+The same correlation analysis repeated separately for each treatment group.
+Each panel shows one brain section × treatment group combination.  Because
+per-group sample sizes are smaller, associations should be interpreted
+cautiously; consistent patterns across groups strengthen confidence.
+
+```{r heatmap_by_group, fig.width=16, fig.height=9, dpi=150, out.width='100%'}
+plot_group_heatmap <- function(df, sec, grp) {
+  d_sub <- df |>
+    dplyr::filter(section == sec, group == grp, !is.na(rho))
+
+  if (nrow(d_sub) == 0) return(invisible(NULL))
+
+  d_sub <- d_sub |>
+    dplyr::mutate(
+      alpha_val  = p_to_alpha(p),
+      label_text = dplyr::if_else(!is.na(rho), sprintf("%.2f", rho), ""),
+      behavior_w = stringr::str_wrap(behavior, width = 16)
+    )
+
+  cyto_ord <- sort(unique(d_sub$cytokine))
+  beh_ord  <- sort(unique(d_sub$behavior_w))
+
+  ggplot2::ggplot(
+    d_sub,
+    ggplot2::aes(
+      x     = factor(behavior_w, levels = beh_ord),
+      y     = factor(cytokine,   levels = rev(cyto_ord)),
+      fill  = rho,
+      alpha = alpha_val
+    )
+  ) +
+    ggplot2::geom_tile(color = "white", linewidth = 0.25) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = label_text, alpha = alpha_val),
+      size  = 2.2,
+      color = "black"
+    ) +
+    ggplot2::scale_fill_gradient2(
+      low      = "#2166AC",
+      mid      = "white",
+      high     = "#D6604D",
+      midpoint = 0,
+      limits   = c(-1, 1),
+      name     = "Spearman\nrho"
+    ) +
+    ggplot2::scale_alpha_identity() +
+    ggplot2::labs(
+      title    = paste0("Brain Section ", sec, " — ", grp),
+      subtitle = "Fill = Spearman rho; Opacity: p < 0.05 opaque, p > 0.20 faint.",
+      x = NULL, y = NULL
+    ) +
+    ggplot2::theme_minimal(base_size = 10) +
+    ggplot2::theme(
+      axis.text.x     = ggplot2::element_text(size = 7, angle = 45,
+                                              hjust = 1, vjust = 1),
+      axis.text.y     = ggplot2::element_text(size = 8),
+      legend.position = "right",
+      panel.grid      = ggplot2::element_blank(),
+      plot.title      = ggplot2::element_text(face = "bold", size = 12),
+      plot.margin     = ggplot2::margin(t = 8, r = 12, b = 20, l = 8)
+    )
+}
+
+all_groups <- sort(unique(pairs_by_group$group))
+for (sec in section_labels) {
+  for (grp in all_groups) {
+    p <- plot_group_heatmap(pairs_by_group, sec, grp)
+    if (!is.null(p)) {
+      fig_n <- fig_n + 1
+      print(p)
+    }
+  }
+}
+```
+
+## Significant correlations table (by treatment group)
+
+Pairs meeting FDR < 0.20 within each brain section × treatment group
+combination.  The full results table (all pairs) is written to
+`cytokine_behavior_correlations_by_group.csv`.
+
+```{r results_table_by_group}
+# Write full by-group results to CSV
+readr::write_csv(
+  pairs_by_group |>
+    dplyr::mutate(
+      dplyr::across(dplyr::any_of(c("rho", "p", "fdr")),
+                    ~ signif(.x, 3))
+    ),
+  file = "cytokine_behavior_correlations_by_group.csv"
+)
+
+tab_n <- tab_n + 1
+
+group_table_display <- pairs_by_group |>
+  dplyr::filter(!is.na(fdr), fdr < 0.20) |>
+  dplyr::mutate(
+    dplyr::across(dplyr::any_of(c("rho", "p", "fdr")), ~ signif(.x, 3))
+  ) |>
+  dplyr::select(section, group, cytokine, behavior, n, rho, p, fdr) |>
+  dplyr::arrange(section, group, fdr, p)
+
+group_table_n_rows <- nrow(group_table_display)
+group_table_caption <- paste0(
+  "Table ", tab_n,
+  ": Spearman correlations with FDR < 0.20 by brain section and treatment group ",
+  "(n = ", group_table_n_rows, " rows)."
+)
+
+group_table_display |>
+  flextable::flextable() |>
+  flextable::colformat_num(j = c("rho", "p", "fdr"), digits = 3) |>
+  flextable::align(align = "center", part = "all") |>
+  flextable::bold(part = "header") |>
+  flextable::bg(part = "header", bg = "#E8EEF6") |>
+  flextable::set_caption(group_table_caption) |>
+  flextable::autofit()
+```
+
+# Summary
+
+```{r summary_counts, echo=FALSE}
+n_sig_05       <- sum(!is.na(pairs_by_section$p)   & pairs_by_section$p   < 0.05, na.rm = TRUE)
+n_sig_fdr      <- sum(!is.na(pairs_by_section$fdr) & pairs_by_section$fdr < 0.20, na.rm = TRUE)
+n_total        <- sum(!is.na(pairs_by_section$rho))
+n_sig_grp_fdr  <- sum(!is.na(pairs_by_group$fdr)   & pairs_by_group$fdr   < 0.20, na.rm = TRUE)
+n_total_grp    <- sum(!is.na(pairs_by_group$rho))
+```
+
+**Pooled analysis.** A total of `r n_total` cytokine–behavior pairs were
+tested across all brain sections (A, B, C; all treatment groups pooled).
+Of these, `r n_sig_05` pairs reached a nominal p < 0.05 and `r n_sig_fdr`
+survived FDR correction at 20%.
+
+**Group-stratified analysis.** A total of `r n_total_grp` cytokine–behavior
+pairs were tested across all brain sections and treatment groups individually.
+Of these, `r n_sig_grp_fdr` survived FDR correction at 20%.
+
+**Interpretation guidance.** Surviving associations (FDR < 0.20) are listed in
+the tables above and exported to `cytokine_behavior_correlations_by_section.csv`
+(pooled) and `cytokine_behavior_correlations_by_group.csv` (stratified) for
+follow-up.  Partial Spearman estimates (pooled analysis) controlling for sex
+are provided as a sensitivity check.  Associations that appear in both the
+pooled and group-stratified analyses, and that are consistent across brain
+sections (A, B, and C), should be treated as the most robust findings.
+
+

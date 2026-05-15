@@ -26,6 +26,22 @@ vignettes/*.html
 vignettes/*.pdf
 vignettes/*.docx
 vignettes/*.png
+vignettes/*.csv
+
+# data files
+*.rda
+*.RData
+*.csv
+
+# figures / images
+figure/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.tiff
+*.bmp
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
@@ -58,3 +74,4 @@ rsconnect/
 data
 inst/extdata
 inst/doc
+.positai
